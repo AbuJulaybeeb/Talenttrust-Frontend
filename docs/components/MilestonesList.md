@@ -1,110 +1,49 @@
-# MilestonesList
+# MilestonesList Component
 
-`MilestonesList` renders the contract milestone summary and milestone cards used
-throughout TalentTrust. It is a display component: callers pass the milestone
-array and, optionally, the parent contract currency. The component derives all
-warnings, tallies, and reminders from those props.
+## Overview
 
-## Location
+The `MilestonesList` component displays the list of milestones associated with a contract. It renders each milestone's status, payout amount, and due date.
 
-- Component: `src/components/MilestonesList.tsx`
-- Tests: `src/components/__tests__/MilestonesList.test.tsx`
-- Supporting helpers: `src/lib/dueSoon.ts`, `src/lib/currencyMismatch.ts`,
-  `src/lib/milestoneStatusTally.ts`
+## Due-Soon Reminder Banner
 
-## Props
+An accessible, dismissible banner is surfaced above the milestones list when there are milestones approaching their deadlines. This banner alerts both freelancers and clients about imminent payout dates, ensuring time-sensitive work is not missed.
 
-```ts
-export type Milestone = {
-  id: string;
-  title: string;
-  status: StatusType;
-  payout: number;
-  currency: string;
-  dueDate?: string;
-  contractId?: string;
-};
+### Features
 
-export type MilestonesListProps = {
-  milestones: Milestone[];
-  contractCurrency?: string;
-};
+- **Configurable Window**: Surfaces milestones due within a configurable timeframe defined by a named constant (default: `7` days).
+- **Status Exclusions**: Excludes milestones that are already in terminal statuses (`Paid` or `Completed`).
+- **Date Handling**: Uses a robust local-time date parser to prevent UTC-to-local shifts, ensuring that boundaries are computed accurately against local calendar days.
+- **Keyboard accessibility**:
+  - The banner container has `role="status"` to announce updates to screen readers.
+  - Links inside the banner target the specific milestone element ID (`#milestone-${id}`) to allow users to jump or scroll directly to the milestone card.
+  - Focus is programmatically restored to the scrollable milestones list container when the banner is dismissed, preventing loss of keyboard focus (WCAG 2.1.1).
+
+## Implementation Details
+
+- **File**: [src/components/MilestonesList.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/MilestonesList.tsx)
+- **Helper**: [src/lib/dueSoon.ts](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/lib/dueSoon.ts)
+- **Constant**: `REMINDER_WINDOW_DAYS = 7`
+
+## Testing
+
+Comprehensive test coverage is provided in [MilestonesList.test.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/__tests__/MilestonesList.test.tsx):
+- Renders banner when due-soon milestones exist.
+- Correct pluralization (e.g., "1 milestone is due..." vs "2 milestones are due...").
+- Exclusion of terminal statuses.
+- Proper handling of due-date boundaries (exactly today, exactly 7 days from now).
+- Graceful skipping of invalid/unparseable due date strings.
+- Dismiss interaction and focus restoration checking.
+- Accessibility validation using `axe`.
+
+Run tests with:
+```bash
+npx jest src/components/__tests__/MilestonesList.test.tsx
 ```
 
-| Prop | Type | Required | Description |
-|---|---|---|---|
-| `milestones` | `Milestone[]` | Yes | Milestones to render. Each item becomes an article with id `milestone-${id}`. |
-| `contractCurrency` | `string` | No | Parent contract currency. When supplied, milestones whose `currency` differs from it are listed in an alert. |
+## URL Status Filtering
 
-`Milestone.status` must be one of the statuses supported by `StatusBadge`
-(`Pending`, `Active`, `Completed`, `Paid`, or `Disputed`).
+The milestones page synchronizes the active status filter with the URL query parameter `?status=`.
 
-## Rendered states
-
-| State | Condition | Rendered UI |
-|---|---|---|
-| Empty | `milestones.length === 0` | Section heading and `0 total`. No cards, no focusable list region, and no status summary. |
-| Populated | `milestones.length > 0` | Heading, total count, status tally chips, and one card per milestone. The card shows title, due date or `TBD`, status badge, and formatted payout. |
-| Currency mismatch | `contractCurrency` is provided and at least one milestone currency differs | `role="alert"` warning listing the mismatched milestones and formatted payouts. |
-| Due soon | Non-terminal milestones are due within `REMINDER_WINDOW_DAYS` (`7`) | Dismissible `role="status"` reminder with links to the matching milestone cards. |
-| Reminder dismissed | User activates `Dismiss reminder` | Due-soon banner is hidden for the current component instance and focus moves to the milestone list region. |
-
-Due-soon reminders exclude `Paid` and `Completed` milestones. Missing or
-unparseable `dueDate` values are ignored by the reminder logic.
-
-## Formatting and derived data
-
-- Payouts are formatted with `usePreferences().formatAmount`.
-- Currency comparisons use normalized currency codes from
-  `normalizeCurrencyCode`.
-- Status tally chips are generated by `milestoneStatusTally(milestones)`.
-- Due-soon detection uses `isDueSoon(dueDate, today, REMINDER_WINDOW_DAYS)`.
-
-## Minimal usage
-
-```tsx
-import MilestonesList, { type Milestone } from '@/components/MilestonesList';
-
-const milestones: Milestone[] = [
-  {
-    id: 'design-handoff',
-    title: 'Design handoff',
-    status: 'Pending',
-    payout: 1200,
-    currency: 'USD',
-    dueDate: '2026-08-01',
-    contractId: 'contract-123',
-  },
-];
-
-export function ContractMilestones() {
-  return (
-    <MilestonesList
-      milestones={milestones}
-      contractCurrency="USD"
-    />
-  );
-}
-```
-
-## Accessibility contract
-
-- The outer section is labelled by the visible `Milestones` heading.
-- When populated, the scroll container uses `role="region"`,
-  `tabIndex={0}`, and `aria-labelledby="milestones-title milestones-count"`.
-- Empty lists do not expose a focusable region.
-- The status summary uses `role="list"` and each tally chip uses
-  `role="listitem"`.
-- Currency mismatches use `role="alert"`.
-- Due-soon reminders use `role="status"`.
-- Reminder links target the matching card id, `#milestone-${id}`.
-- Dismissing the reminder restores focus to the scroll region to avoid
-  keyboard focus loss.
-
-## Related docs
-
-- `docs/components/StatusBadge.md`
-- `docs/components/MilestoneCreationForm.md`
-- `docs/lib/dueSoon.md`
-- `docs/lib/currencyMismatch.md`
-- `docs/lib/milestoneStatusTally.md`
+- **Initial State**: Read from the `?status=` URL query parameter using `useSearchParams`. Defaults to `'All'` if omitted or invalid.
+- **Filter Changes**: When a user selects a filter option, `router.replace` updates the URL query string without creating extra history entries.
+- **Accessibility**: Preserves the `aria-live` announcement for screen readers on filter change.

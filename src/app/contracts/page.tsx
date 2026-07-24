@@ -1,11 +1,8 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
-import ContractStatusFilter, {
-  type ContractStatusValue,
-} from '@/components/contracts/ContractStatusFilter';
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 
@@ -30,7 +27,6 @@ const ContractsPage: React.FC = () => {
       return matchesSearch && matchesStatus;
     });
   }, [contracts, searchTerm, statusFilter]);
-
   /**
    * Opens the contract creation form modal.
    */
@@ -60,6 +56,7 @@ const ContractsPage: React.FC = () => {
       <h1 className="text-2xl font-bold mb-6">
         Contracts
       </h1>
+      <h1 className="text-2xl font-bold mb-6">Contracts</h1>
 
       {!showForm && contracts.length === 0 && (
         <EmptyState
@@ -87,6 +84,8 @@ const ContractsPage: React.FC = () => {
                 />
               </div>
             </div>
+
+          <div className="mb-4 flex justify-end">
             <button
               type="button"
               onClick={handleCreateContract}
@@ -95,30 +94,20 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
-
-          <ContractStatusFilter
-            selected={statusFilter}
-            onChange={setStatusFilter}
-            resultCount={filteredContracts.length}
-          />
-
-          {filteredContracts.length === 0 ? (
-            <p className="text-sm text-slate-500">No contracts match the selected filter.</p>
-          ) : (
-            <ul className="space-y-4">
-              {filteredContracts.map((contract, idx) => (
-                <li
-                  key={`${contract.contractName}-${idx}`}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <p className="font-semibold text-slate-900">{contract.contractName}</p>
-                  <p className="text-sm text-slate-500">
-                    {contract.status} · Created {contract.createdAt}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* TODO: Replace with a proper ContractSummary list component. */}
+          <ul className="space-y-4">
+            {contracts.map((contract, idx) => (
+              <li
+                key={`${contract.contractName}-${idx}`}
+                className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <p className="font-semibold text-slate-900">{contract.contractName}</p>
+                <p className="text-sm text-slate-500">
+                  {contract.status} · Created {contract.createdAt}
+                </p>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -133,3 +122,4 @@ const ContractsPage: React.FC = () => {
 };
 
 export default ContractsPage;
+

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import StatusBadge, { StatusType, statusColorMap, statusIconMap } from './StatusBadge';
 import { usePreferences } from '@/lib/preferences';
 import { isDueSoon } from '@/lib/dueSoon';
@@ -23,11 +23,9 @@ export type MilestonesListProps = {
 
 export const REMINDER_WINDOW_DAYS = 7;
 
-const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesListProps) => {
+const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) => {
   const { formatAmount } = usePreferences();
   const [isDismissed, setIsDismissed] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortOption, setSortOption] = useState<SortOption>('dueDate-asc');
   const listContainerRef = useRef<HTMLDivElement>(null);
 
   const today = new Date();
@@ -62,17 +60,6 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
 
   const showBanner = dueSoonMilestones.length > 0 && !isDismissed;
 
-  // Apply filter and sort to milestones
-  const filteredMilestones = useMemo(
-    () => filterMilestonesByTitle(milestones, searchQuery),
-    [milestones, searchQuery]
-  );
-
-  const displayedMilestones = useMemo(
-    () => sortMilestones(filteredMilestones, sortOption),
-    [filteredMilestones, sortOption]
-  );
-
   const handleDismiss = () => {
     setIsDismissed(true);
     // Programmatically shift focus to the list container to avoid focus loss (WCAG 2.1.1)
@@ -87,53 +74,6 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
         </h2>
         <span id="milestones-count" className="text-sm text-slate-500">{milestones.length} total</span>
       </div>
-
-      {/* Search and Sort Toolbar */}
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1">
-          <label htmlFor="milestone-search" className="sr-only">
-            Search milestones
-          </label>
-          <input
-            id="milestone-search"
-            type="text"
-            placeholder="Search milestones..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            aria-controls="milestones-list-region"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="milestone-sort" className="text-sm text-slate-600">
-            Sort by:
-          </label>
-          <select
-            id="milestone-sort"
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value as SortOption)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="dueDate-asc">Due date (earliest first)</option>
-            <option value="dueDate-desc">Due date (latest first)</option>
-            <option value="payout-asc">Payout (lowest first)</option>
-            <option value="payout-desc">Payout (highest first)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Live region for filtered result count */}
-      {searchQuery && (
-        <div
-          aria-live="polite"
-          aria-atomic="true"
-          className="text-sm text-slate-600"
-        >
-          {displayedMilestones.length === milestones.length
-            ? `Showing all ${milestones.length} milestones`
-            : `Showing ${displayedMilestones.length} of ${milestones.length} milestones`}
-        </div>
-      )}
 
       {tallies.length > 0 && (
         <div
@@ -231,43 +171,32 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
         role={milestones.length > 0 ? 'region' : undefined}
         aria-labelledby={milestones.length > 0 ? 'milestones-title milestones-count' : undefined}
         tabIndex={milestones.length > 0 ? 0 : undefined}
-        className={`mt-6 max-h-[calc(100vh-260px)] overflow-y-auto pr-2 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 ${listDensity === 'compact' ? 'space-y-2' : 'space-y-4'}`}
+        className="mt-6 space-y-4 max-h-[calc(100vh-260px)] overflow-y-auto pr-2 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
       >
-          {milestones.map((milestone) => (
-            <MilestoneRow key={milestone.id} milestone={milestone} formatAmount={formatAmount} />
-          ))}
+        {milestones.map((milestone) => (
+          <article
+            key={milestone.id}
+            id={`milestone-${milestone.id}`}
+            className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600">{milestone.title}</p>
+                <p className="mt-1 text-sm text-slate-500">Due {milestone.dueDate ?? 'TBD'}</p>
+              </div>
+              <StatusBadge status={milestone.status} />
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
+              <p>Payout</p>
+              <p className="font-semibold text-slate-900">
+                {formatAmount(milestone.payout, milestone.currency)}
+              </p>
+            </div>
+          </article>
+        ))}
       </div>
-
-      {milestones.length > 0 && (
-        <div className="mt-3 flex justify-end">
-          <BackToTop containerRef={listContainerRef} threshold={240} />
-        </div>
-      )}
     </section>
   );
-});
-
-// Memoized row component for individual milestone
-const MilestoneRow = React.memo(({ milestone, formatAmount }: { milestone: Milestone; formatAmount: (amount: number, currency: string) => string; }) => (
-  <article
-    id={`milestone-${milestone.id}`}
-    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
-  >
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-medium text-slate-600">{milestone.title}</p>
-        <p className="mt-1 text-sm text-slate-500">Due {milestone.dueDate ?? 'TBD'}</p>
-      </div>
-      <StatusBadge status={milestone.status} />
-    </div>
-    <div className="mt-4 flex items-center justify-between gap-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
-      <p>Payout</p>
-      <p className="font-semibold text-slate-900">
-        {formatAmount(milestone.payout, milestone.currency)}
-      </p>
-    </div>
-  </article>
-));
-
+};
 
 export default MilestonesList;

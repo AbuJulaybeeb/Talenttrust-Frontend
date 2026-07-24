@@ -1,10 +1,9 @@
 /// <reference types="jest" />
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode, useState } from 'react';
-import { PreferencesProvider, usePreferences } from '@/lib/preferences';
-import { ToastAnnouncer, ToastProvider, ToastRow, ToastViewport, useToast } from './toast-provider';
-import * as toastStyles from './toast-styles';
+import { StrictMode } from 'react';
+import { PreferencesProvider } from '@/lib/preferences';
+import { ToastProvider, useToast } from './toast-provider';
 
 function ToastHarness() {
   const { showError, showSuccess } = useToast();
@@ -489,7 +488,7 @@ describe('default duration', () => {
   });
 });
 
-describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
+describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -541,7 +540,7 @@ describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
     expect(screen.getAllByRole('status')).toHaveLength(4);
   });
 
-  it('queues overflow instead of evicting, keeping only MAX_VISIBLE_TOASTS visible', () => {
+  it('evicts the oldest toast when over cap, keeping only MAX_VISIBLE_TOASTS', () => {
     render(
       <ToastProvider>
         <MultiToastHarness count={5} />
@@ -550,15 +549,14 @@ describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
 
-    // Still exactly 4 visible, but they are the *first* four created —
-    // nothing already on screen gets pushed off to make room.
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.getAllByText('Toast 1', { selector: 'p' })).toHaveLength(1);
-    expect(screen.getAllByText('Toast 4', { selector: 'p' })).toHaveLength(1);
-    expect(screen.queryAllByText('Toast 5', { selector: 'p' })).toHaveLength(0);
+    const visible = screen.getAllByRole('status');
+    expect(visible).toHaveLength(4);
+    expect(screen.queryAllByText('Toast 1', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getAllByText('Toast 2', { selector: 'p' })).toHaveLength(1);
+    expect(screen.getAllByText('Toast 5', { selector: 'p' })).toHaveLength(1);
   });
 
-  it('keeps every toast from a large over-cap burst somewhere (visible or queued), never dropping one', () => {
+  it('always keeps the newest toast after multiple over-cap additions', () => {
     render(
       <ToastProvider>
         <MultiToastHarness count={6} />
@@ -568,23 +566,80 @@ describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
     fireEvent.click(screen.getByRole('button', { name: /add 6 toasts/i }));
 
     expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.getAllByText('Toast 1', { selector: 'p' })).toHaveLength(1);
-    expect(screen.getAllByText('Toast 4', { selector: 'p' })).toHaveLength(1);
-    // 5 and 6 are queued, not gone — dismissing visible toasts below
-    // confirms they are still there and get promoted in order.
-    expect(screen.queryAllByText('Toast 5', { selector: 'p' })).toHaveLength(0);
-    expect(screen.queryAllByText('Toast 6', { selector: 'p' })).toHaveLength(0);
+    expect(screen.queryAllByText('Toast 1', { selector: 'p' })).toHaveLength(0);
+    expect(screen.queryAllByText('Toast 2', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getAllByText('Toast 6', { selector: 'p' })).toHaveLength(1);
   });
 
-  it('promotes the oldest queued toast into view, with a working auto-dismiss timer, when a visible toast is dismissed', async () => {
+  it('clears the evicted toast timer so it cannot auto-dismiss after eviction', async () => {
     function SequentialHarness() {
       const { showSuccess } = useToast();
       return (
         <>
           <button
             onClick={() => {
-              for (let i = 1; i <= 5; i++) {
+              for (let i = 1; i <= 4; i++) {
                 showSuccess({ title: `SeqToast ${i}`, duration: 5000 });
+              }
+            }}
+            type="button"
+          >
+            Add 4
+          </button>
+          <button
+            onClick={() => showSuccess({ title: 'SeqToast 5', duration: 5000 })}
+            type="button"
+          >
+            Add 5th
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <SequentialHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add 4/i }));
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+
+    const clearTimeoutSpy = jest.spyOn(window, 'clearTimeout');
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5th/i }));
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+    expect(screen.queryAllByText('SeqToast 1', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(1);
+
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('announces the newest toast in the live region after eviction', () => {
+    render(
+      <ToastProvider>
+        <MultiToastHarness count={5} />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
+
+    const politeRegion = document.querySelector('[aria-live="polite"]');
+    expect(politeRegion).toHaveTextContent('Toast 5');
+  });
+
+  it('does not affect pause-on-hover after eviction', async () => {
+    function SingleEvictHarness() {
+      const { showSuccess } = useToast();
+      return (
+        <>
+          <button
+            onClick={() => {
+              for (let i = 1; i <= 5; i++) {
+                showSuccess({ title: `T${i}`, duration: 2000 });
               }
             }}
             type="button"
@@ -597,72 +652,11 @@ describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
 
     render(
       <ToastProvider>
-        <SequentialHarness />
+        <SingleEvictHarness />
       </ToastProvider>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /add 5/i }));
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(0);
-
-    // Dismiss the oldest visible toast — this should free a slot for the
-    // queued fifth toast, not just shrink the visible count.
-    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
-
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('SeqToast 1', { selector: 'p' })).toHaveLength(0);
-    expect(screen.getAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(1);
-
-    // The promoted toast gets its own timer, scheduled fresh at promotion time.
-    act(() => {
-      jest.advanceTimersByTime(5000);
-    });
-
-    await waitFor(() => {
-      expect(screen.queryAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(0);
-    });
-  });
-
-  it('announces the toast that is actually visible, not one still waiting in the queue', () => {
-    render(
-      <ToastProvider>
-        <MultiToastHarness count={5} />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
-
-    // Toast 5 hasn't been shown yet, so it must not be announced either.
-    const politeRegion = document.querySelector('[aria-live="polite"]');
-    expect(politeRegion).toHaveTextContent('Toast 4');
-    expect(politeRegion).not.toHaveTextContent('Toast 5');
-  });
-
-  it('does not affect pause-on-hover for a toast promoted from the queue', async () => {
-    function SingleQueueHarness() {
-      const { showSuccess } = useToast();
-      return (
-        <button
-          onClick={() => {
-            for (let i = 1; i <= 5; i++) {
-              showSuccess({ title: `T${i}`, duration: 2000 });
-            }
-          }}
-          type="button"
-        >
-          Add 5
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <SingleQueueHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /add 5/i }));
-    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
 
     const t5Para = screen.getAllByText('T5', { selector: 'p' })[0];
     const t5 = t5Para.closest('[role="status"]')!;
@@ -683,155 +677,6 @@ describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
     await waitFor(() => {
       expect(screen.queryAllByText('T5', { selector: 'p' })).toHaveLength(0);
     });
-  });
-
-  it('promotes a queued error ahead of a success toast that was queued earlier (severity ordering)', () => {
-    function SeverityHarness() {
-      const { showSuccess, showError } = useToast();
-      return (
-        <>
-          <button
-            onClick={() => {
-              for (let i = 1; i <= 4; i++) {
-                showSuccess({ title: `Fill ${i}`, duration: 10000 });
-              }
-              // Both of these are created over-cap: a success first, then an
-              // error. Without severity ordering the success would be
-              // promoted first since it was queued first (FIFO).
-              showSuccess({ title: 'Queued success', duration: 10000 });
-              showError({ title: 'Queued error', duration: 10000 });
-            }}
-            type="button"
-          >
-            Fill and queue
-          </button>
-        </>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <SeverityHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /fill and queue/i }));
-    expect(screen.queryAllByText('Queued success', { selector: 'p' })).toHaveLength(0);
-    expect(screen.queryAllByText('Queued error', { selector: 'p' })).toHaveLength(0);
-
-    // Free one slot — the error should be promoted, not the
-    // earlier-queued success.
-    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
-
-    expect(screen.getAllByText('Queued error', { selector: 'p' })).toHaveLength(1);
-    expect(screen.queryAllByText('Queued success', { selector: 'p' })).toHaveLength(0);
-  });
-
-  it('never silently drops a queued error toast under a large success burst', () => {
-    function BigBurstHarness() {
-      const { showSuccess, showError } = useToast();
-      return (
-        <button
-          onClick={() => {
-            for (let i = 1; i <= 10; i++) {
-              showSuccess({ title: `Burst ${i}`, duration: 10000 });
-            }
-            showError({ title: 'Important failure', duration: 10000 });
-          }}
-          type="button"
-        >
-          Trigger burst plus error
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <BigBurstHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger burst plus error/i }));
-
-    // Not visible yet (10 success toasts are ahead of it in creation order,
-    // but only 4 fit), and critically — not lost either.
-    expect(screen.queryAllByText('Important failure', { selector: 'p' })).toHaveLength(0);
-
-    // Dismiss visible toasts one at a time; the error must surface well
-    // before all 10 successes have cycled through, because it jumps the
-    // success queue.
-    for (let i = 0; i < 4; i += 1) {
-      fireEvent.click(screen.getAllByLabelText(/dismiss/i)[0]);
-    }
-
-    expect(screen.getAllByText('Important failure', { selector: 'p' })).toHaveLength(1);
-  });
-
-  it('queues an error directly (no success ahead of it) when the queue was empty', () => {
-    function DirectErrorHarness() {
-      const { showSuccess, showError } = useToast();
-      return (
-        <button
-          onClick={() => {
-            for (let i = 1; i <= 4; i++) {
-              showSuccess({ title: `Fill ${i}`, duration: 10000 });
-            }
-            showError({ title: 'First queued error', duration: 10000 });
-          }}
-          type="button"
-        >
-          Fill then queue error
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <DirectErrorHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /fill then queue error/i }));
-    expect(screen.queryAllByText('First queued error', { selector: 'p' })).toHaveLength(0);
-
-    fireEvent.click(screen.getAllByLabelText(/dismiss/i)[0]);
-
-    expect(screen.getAllByText('First queued error', { selector: 'p' })).toHaveLength(1);
-  });
-
-  it('does not over-promote if a toast is dismissed twice (dismiss button and its own timer racing)', () => {
-    function RaceHarness() {
-      const { showSuccess, dismissToast } = useToast();
-      return (
-        <button
-          onClick={() => {
-            const ids: string[] = [];
-            for (let i = 1; i <= 5; i++) {
-              ids.push(showSuccess({ title: `Race ${i}`, duration: 10000 }));
-            }
-            // Simulate the dismiss button and the auto-dismiss timer both
-            // resolving for the same already-visible toast.
-            dismissToast(ids[0]);
-            dismissToast(ids[0]);
-          }}
-          type="button"
-        >
-          Trigger race
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <RaceHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger race/i }));
-
-    // Exactly one queued toast should have been promoted, not two —
-    // the visible count must stay at the cap.
-    expect(screen.getAllByRole('status')).toHaveLength(4);
   });
 });
 
@@ -1487,7 +1332,7 @@ describe('toastDuration preference', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('MAX_VISIBLE_TOASTS queueing still works with persistent preference', () => {
+  it('MAX_VISIBLE_TOASTS eviction still works with persistent preference', () => {
     localStorage.setItem(
       'talenttrust-user-preferences',
       JSON.stringify({ toastDuration: 'persistent' }),
@@ -1519,768 +1364,13 @@ describe('toastDuration preference', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /add toasts/i }));
 
-    // After adding 5, only 4 should be visible — but they are the first
-    // four (PToast 1 included), not evicted; the 5th is queued.
+    // After adding 5, only 4 should be visible (oldest evicted).
     expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.getAllByText('PToast 1', { selector: 'p' })).toHaveLength(1);
-    expect(screen.queryAllByText('PToast 5', { selector: 'p' })).toHaveLength(0);
+    expect(screen.queryAllByText('PToast 1', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getAllByText('PToast 5', { selector: 'p' })).toHaveLength(1);
 
-    // Advance time — none should auto-dismiss (all persistent), so the
-    // queued toast never gets a chance to be promoted here.
+    // Advance time — none should auto-dismiss (all persistent).
     act(() => { jest.advanceTimersByTime(60000); });
     expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('PToast 5', { selector: 'p' })).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// copy-details (issue #504)
-// ---------------------------------------------------------------------------
-
-describe('buildCopyText', () => {
-  it('includes the title prefixed with "Error:"', () => {
-    const result = buildCopyText({ title: 'Wallet not connected' });
-    expect(result).toContain('Error: Wallet not connected');
-  });
-
-  it('includes description prefixed with "Details:" when present', () => {
-    const result = buildCopyText({
-      title: 'Wallet not connected',
-      description: 'Connect a wallet first.',
-    });
-    expect(result).toContain('Details: Connect a wallet first.');
-  });
-
-  it('omits the Details line when description is absent', () => {
-    const result = buildCopyText({ title: 'Network error' });
-    expect(result).not.toContain('Details:');
-  });
-
-  it('includes correlationId prefixed with "Correlation ID:" when present', () => {
-    const result = buildCopyText({
-      title: 'Payment failed',
-      correlationId: 'abc-123',
-    });
-    expect(result).toContain('Correlation ID: abc-123');
-  });
-
-  it('omits the Correlation ID line when correlationId is absent', () => {
-    const result = buildCopyText({ title: 'Payment failed' });
-    expect(result).not.toContain('Correlation ID:');
-  });
-
-  it('assembles all three lines in order when all fields are present', () => {
-    const result = buildCopyText({
-      title: 'Upload failed',
-      description: 'File size exceeds limit.',
-      correlationId: 'req-456',
-    });
-    expect(result).toBe(
-      'Error: Upload failed\nDetails: File size exceeds limit.\nCorrelation ID: req-456',
-    );
-  });
-
-  it('returns just the title line when only title is provided', () => {
-    const result = buildCopyText({ title: 'Unknown error' });
-    expect(result).toBe('Error: Unknown error');
-  });
-
-  it('handles a title that is an empty string without throwing', () => {
-    expect(() => buildCopyText({ title: '' })).not.toThrow();
-    const result = buildCopyText({ title: '' });
-    expect(result).toBe('Error: ');
-  });
-});
-
-describe('copyToClipboard', () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it('uses navigator.clipboard.writeText when available and returns true on success', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    const result = await copyToClipboard('hello');
-    expect(writeText).toHaveBeenCalledWith('hello');
-    expect(result).toBe(true);
-  });
-
-  it('falls back to execCommand when clipboard API rejects and returns true on success', async () => {
-    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-    
-    // Define execCommand before spying on it
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
-
-    const result = await copyToClipboard('fallback text');
-    expect(execCommandSpy).toHaveBeenCalledWith('copy');
-    expect(result).toBe(true);
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('falls back to execCommand when clipboard API is unavailable', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: undefined,
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
-
-    const result = await copyToClipboard('no clipboard');
-    expect(execCommandSpy).toHaveBeenCalledWith('copy');
-    expect(result).toBe(true);
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('returns false when clipboard API rejects and execCommand returns false', async () => {
-    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(false);
-
-    const result = await copyToClipboard('will fail');
-    expect(result).toBe(false);
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('returns false when both clipboard API and execCommand throw', async () => {
-    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockImplementation(() => {
-      throw new Error('execCommand unavailable');
-    });
-
-    const result = await copyToClipboard('will fail');
-    expect(result).toBe(false);
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('cleans up the temporary textarea from the DOM on success', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: undefined,
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
-    const initialBodyChildCount = document.body.children.length;
-
-    await copyToClipboard('cleanup test');
-
-    expect(document.body.children.length).toBe(initialBodyChildCount);
-    execCommandSpy.mockRestore();
-  });
-
-  it('cleans up the temporary textarea from the DOM even when execCommand throws', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: undefined,
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockImplementation(() => {
-      throw new Error('execCommand unavailable');
-    });
-    const initialBodyChildCount = document.body.children.length;
-
-    await copyToClipboard('cleanup error test');
-
-    expect(document.body.children.length).toBe(initialBodyChildCount);
-    execCommandSpy.mockRestore();
-  });
-});
-
-describe('copy-details button rendering', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    // Provide a working clipboard mock for all rendering tests.
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: jest.fn().mockResolvedValue(undefined) },
-      configurable: true,
-    });
-  });
-
-  afterEach(() => {
-    act(() => { jest.clearAllTimers(); });
-    jest.useRealTimers();
-    jest.restoreAllMocks();
-  });
-
-  it('renders a "Copy details" button on error toasts', () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    expect(
-      screen.getByRole('button', { name: /copy error details to clipboard/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('does NOT render a "Copy details" button on success toasts', () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger success/i }));
-
-    expect(
-      screen.queryByRole('button', { name: /copy error details to clipboard/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows "✓ Copied!" label immediately after a successful copy', async () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toHaveTextContent('✓ Copied!');
-  });
-
-  it('resets back to "Copy details" label after 2000ms', async () => {
-    // Use a long duration so the toast does not auto-dismiss while we
-    // advance the 2000ms copy-reset timer.
-    function LongErrorHarness() {
-      const { showError } = useToast();
-      return (
-        <button
-          type="button"
-          onClick={() =>
-            showError({ title: 'Persistent error', duration: 30000 })
-          }
-        >
-          Trigger long error
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <LongErrorHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger long error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
-
-    act(() => { jest.advanceTimersByTime(2000); });
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /copy error details to clipboard/i })).toBeInTheDocument();
-    });
-  });
-
-  it('does not change label if copy fails (returns false)', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: jest.fn().mockRejectedValue(new Error('denied')) },
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(false);
-
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    // Label should NOT have changed to "Copied!" since copy failed.
-    expect(screen.queryByRole('button', { name: /copied to clipboard/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /copy error details to clipboard/i })).toBeInTheDocument();
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('copies the correct text (title + description)', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(writeText).toHaveBeenCalledWith(
-      'Error: Wallet not connected\nDetails: Connect a wallet first.',
-    );
-  });
-
-  it('copies just the title when no description is present', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    function TitleOnlyErrorHarness() {
-      const { showError } = useToast();
-      return (
-        <button
-          type="button"
-          onClick={() => showError({ title: 'Something went wrong', duration: 5000 })}
-        >
-          Trigger title-only error
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <TitleOnlyErrorHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger title-only error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(writeText).toHaveBeenCalledWith('Error: Something went wrong');
-  });
-
-  it('includes the correlationId in copied text when provided', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    function CorrelationErrorHarness() {
-      const { showError } = useToast();
-      return (
-        <button
-          type="button"
-          onClick={() =>
-            showError({
-              title: 'Payment failed',
-              description: 'Insufficient funds.',
-              correlationId: 'req-789',
-              duration: 5000,
-            })
-          }
-        >
-          Trigger correlation error
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <CorrelationErrorHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger correlation error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(writeText).toHaveBeenCalledWith(
-      'Error: Payment failed\nDetails: Insufficient funds.\nCorrelation ID: req-789',
-    );
-  });
-
-  it('uses the execCommand fallback when clipboard API is unavailable', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: undefined,
-      configurable: true,
-    });
-    
-    if (!document.execCommand) {
-      Object.defineProperty(document, 'execCommand', {
-        value: () => false,
-        configurable: true,
-        writable: true,
-      });
-    }
-    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
-
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    expect(execCommandSpy).toHaveBeenCalledWith('copy');
-    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
-    
-    execCommandSpy.mockRestore();
-  });
-
-  it('copy button has accessible aria-label that updates after copy', async () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    expect(copyBtn).toHaveAttribute('aria-label', 'Copy error details to clipboard');
-
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    const updatedBtn = screen.getByRole('button', { name: /copied to clipboard/i });
-    expect(updatedBtn).toHaveAttribute('aria-label', 'Copied to clipboard');
-  });
-
-  it('copy button has focus-visible ring styling', () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    expect(copyBtn.className).toContain('focus-visible:ring-2');
-  });
-
-  it('copy button does not dismiss the toast', async () => {
-    render(
-      <ToastProvider>
-        <ToastHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-
-    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
-
-    // Toast must still be visible after copy.
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-  });
-
-  it('error toast with action button also shows the copy-details button', async () => {
-    function ErrorWithActionHarness() {
-      const { showError } = useToast();
-      return (
-        <button
-          type="button"
-          onClick={() =>
-            showError({
-              title: 'Upload failed',
-              action: { label: 'Retry', onClick: jest.fn() },
-              duration: 5000,
-            })
-          }
-        >
-          Trigger error with action
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <ErrorWithActionHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /trigger error with action/i }));
-
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /copy error details to clipboard/i }),
-    ).toBeInTheDocument();
-  });
-});
-
-describe('row and derived-data memoization', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-
-  afterEach(() => {
-    act(() => {
-      jest.clearAllTimers();
-    });
-    jest.useRealTimers();
-    jest.restoreAllMocks();
-  });
-
-  function Trigger({ title }: { title: string }) {
-    const { showSuccess } = useToast();
-    return (
-      <button onClick={() => showSuccess({ title, duration: 2000 })} type="button">
-        {`Create ${title}`}
-      </button>
-    );
-  }
-
-  /**
-   * Mounts `ToastProvider` behind its own unrelated state so that clicking
-   * "Unrelated update" re-renders `ToastProvider` (a new element is created
-   * for it on every `NoisyAncestor` render) without touching toasts or
-   * preferences — reproducing the "unrelated state change" from the ticket.
-   */
-  function NoisyAncestor({ children }: { children: React.ReactNode }) {
-    const [count, setCount] = useState(0);
-    return (
-      <div>
-        <button onClick={() => setCount((current) => current + 1)} type="button">
-          Unrelated update
-        </button>
-        <span data-testid="unrelated-count">{count}</span>
-        <ToastProvider>{children}</ToastProvider>
-      </div>
-    );
-  }
-
-  function isMemoComponent(value: unknown) {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      (value as { $$typeof?: symbol }).$$typeof === Symbol.for('react.memo')
-    );
-  }
-
-  it('wraps ToastRow, ToastViewport, and ToastAnnouncer in React.memo', () => {
-    expect(isMemoComponent(ToastRow)).toBe(true);
-    expect(isMemoComponent(ToastViewport)).toBe(true);
-    expect(isMemoComponent(ToastAnnouncer)).toBe(true);
-  });
-
-  it("does not recompute a toast row's derived styles when an unrelated ancestor re-renders", () => {
-    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
-
-    render(
-      <NoisyAncestor>
-        <Trigger title="Milestone" />
-      </NoisyAncestor>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /create milestone/i }));
-    expect(stylesSpy).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
-    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
-    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
-
-    // The unrelated state did update…
-    expect(screen.getByTestId('unrelated-count')).toHaveTextContent('3');
-    // …but the toast row's derived data was not recomputed, and the toast
-    // itself is unaffected.
-    expect(stylesSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('status')).toHaveTextContent('Milestone');
-  });
-
-  it('recomputes styles only for a newly added toast, not for existing rows', () => {
-    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
-
-    render(
-      <ToastProvider>
-        <Trigger title="Toast A" />
-        <Trigger title="Toast B" />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /create toast a/i }));
-    expect(stylesSpy).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: /create toast b/i }));
-    expect(stylesSpy).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not recompute a surviving toast's styles when a sibling toast is dismissed", () => {
-    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
-
-    render(
-      <ToastProvider>
-        <Trigger title="Toast A" />
-        <Trigger title="Toast B" />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /create toast a/i }));
-    fireEvent.click(screen.getByRole('button', { name: /create toast b/i }));
-    expect(stylesSpy).toHaveBeenCalledTimes(2);
-
-    const dismissButtons = screen.getAllByRole('button', { name: /dismiss success notification/i });
-    fireEvent.click(dismissButtons[0]);
-
-    expect(screen.getByText('Toast B', { selector: 'p' })).toBeInTheDocument();
-    expect(stylesSpy).toHaveBeenCalledTimes(2);
-  });
-
-  it('computes styles exactly once per toast across a large, evicting burst of toasts', () => {
-    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
-
-    function BurstTrigger() {
-      const { showSuccess } = useToast();
-      return (
-        <button onClick={() => showSuccess({ title: 'Burst toast', duration: 2000 })} type="button">
-          Fire one
-        </button>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <BurstTrigger />
-      </ToastProvider>,
-    );
-
-    const fireButton = screen.getByRole('button', { name: /fire one/i });
-    for (let i = 0; i < 25; i += 1) {
-      fireEvent.click(fireButton);
-    }
-
-    // Every created toast gets exactly one style computation the moment it
-    // mounts, even though only MAX_VISIBLE_TOASTS (4) remain after eviction.
-    expect(stylesSpy).toHaveBeenCalledTimes(25);
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-  });
-
-  it('still updates the viewport when a relevant preference actually changes, even amid unrelated noise', () => {
-    function DensityToggle() {
-      const { updatePreference } = usePreferences();
-      return (
-        <button onClick={() => updatePreference('toastDensity', 'compact')} type="button">
-          Switch to compact
-        </button>
-      );
-    }
-
-    render(
-      <PreferencesProvider>
-        <NoisyAncestor>
-          <Trigger title="Milestone" />
-          <DensityToggle />
-        </NoisyAncestor>
-      </PreferencesProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /create milestone/i }));
-
-    const viewport = screen.getByLabelText('Notifications');
-    expect(viewport.className).toMatch(/gap-3/);
-
-    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
-    fireEvent.click(screen.getByRole('button', { name: /switch to compact/i }));
-
-    expect(viewport.className).toMatch(/gap-1\.5/);
   });
 });
