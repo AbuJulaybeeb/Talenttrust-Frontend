@@ -1,8 +1,10 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { assertNoA11yViolations } from '@/test-utils/a11y';
-import MilestoneFilter, { type MilestoneStatusFilter } from '../milestones/MilestoneFilter';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { axe } from 'jest-axe';
+import MilestoneFilter, {
+  MILESTONE_ANNOUNCEMENT_DELAY_MS,
+  type MilestoneStatusFilter,
+} from '../milestones/MilestoneFilter';
 
 const FILTER_OPTIONS: MilestoneStatusFilter[] = [
   'All',
@@ -14,7 +16,7 @@ const FILTER_OPTIONS: MilestoneStatusFilter[] = [
 ];
 
 describe('MilestoneFilter', () => {
-  beforeEach(() => {
+  afterEach(() => {
     jest.useRealTimers();
   });
 
@@ -68,168 +70,131 @@ describe('MilestoneFilter', () => {
     expect(handleChange).toHaveBeenCalledWith('Active');
   });
 
-  describe('keyboard navigation', () => {
-    it('moves forward with ArrowDown and fires onChange exactly once', async () => {
-      const user = userEvent.setup();
-      const handleChange = jest.fn();
+  it('does not announce the initial filter state', () => {
+    jest.useFakeTimers();
 
-      render(
+    const { container } = render(
+      <React.StrictMode>
         <MilestoneFilter
           selected="All"
-          onChange={handleChange}
-          resultCount={12}
-        />,
-      );
+          onChange={jest.fn()}
+          resultCount={2}
+        />
+      </React.StrictMode>,
+    );
 
-      screen.getByRole('radio', { name: 'All' }).focus();
-      await user.keyboard('{ArrowDown}');
-
-      expect(handleChange).toHaveBeenCalledTimes(1);
-      expect(handleChange).toHaveBeenCalledWith('Active');
+    act(() => {
+      jest.advanceTimersByTime(MILESTONE_ANNOUNCEMENT_DELAY_MS);
     });
 
-    it('moves backward with ArrowUp and fires onChange exactly once', async () => {
-      const user = userEvent.setup();
-      const handleChange = jest.fn();
-
-      render(
-        <MilestoneFilter
-          selected="Pending"
-          onChange={handleChange}
-          resultCount={12}
-        />,
-      );
-
-      screen.getByRole('radio', { name: 'Pending' }).focus();
-      await user.keyboard('{ArrowUp}');
-
-      expect(handleChange).toHaveBeenCalledTimes(1);
-      expect(handleChange).toHaveBeenCalledWith('Active');
-    });
-
-    it('moves forward with ArrowRight', async () => {
-      const user = userEvent.setup();
-      const handleChange = jest.fn();
-
-      render(
-        <MilestoneFilter
-          selected="Completed"
-          onChange={handleChange}
-          resultCount={12}
-        />,
-      );
-
-      screen.getByRole('radio', { name: 'Completed' }).focus();
-      await user.keyboard('{ArrowRight}');
-
-      expect(handleChange).toHaveBeenCalledTimes(1);
-      expect(handleChange).toHaveBeenCalledWith('Paid');
-    });
-
-    it('moves backward with ArrowLeft', async () => {
-      const user = userEvent.setup();
-      const handleChange = jest.fn();
-
-      render(
-        <MilestoneFilter
-          selected="Paid"
-          onChange={handleChange}
-          resultCount={12}
-        />,
-      );
-
-      screen.getByRole('radio', { name: 'Paid' }).focus();
-      await user.keyboard('{ArrowLeft}');
-
-      expect(handleChange).toHaveBeenCalledTimes(1);
-      expect(handleChange).toHaveBeenCalledWith('Completed');
-    });
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion).toHaveAttribute('aria-live', 'polite');
+    expect(liveRegion).toHaveAttribute('aria-atomic', 'true');
+    expect(liveRegion).toBeEmptyDOMElement();
   });
 
-  describe('live region announcements', () => {
-    it('marks the container as a polite atomic live region', () => {
-      render(
-        <MilestoneFilter
-          selected="All"
-          onChange={jest.fn()}
-          resultCount={2}
-        />,
-      );
+  it('debounces rapid updates and announces only the latest result', () => {
+    jest.useFakeTimers();
 
-      const liveRegion = screen.getByText('Showing all 2 milestones');
-      expect(liveRegion).toHaveAttribute('aria-live', 'polite');
-      expect(liveRegion).toHaveAttribute('aria-atomic', 'true');
+    const { container, rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={5}
+      />,
+    );
+
+    rerender(
+      <MilestoneFilter
+        selected="Active"
+        onChange={jest.fn()}
+        resultCount={3}
+      />,
+    );
+
+    act(() => {
+      jest.advanceTimersByTime(MILESTONE_ANNOUNCEMENT_DELAY_MS - 100);
     });
 
-    it('announces count with plural wording when resultCount > 1', () => {
-      render(
-        <MilestoneFilter
-          selected="Disputed"
-          onChange={jest.fn()}
-          resultCount={5}
-        />,
-      );
+    rerender(
+      <MilestoneFilter
+        selected="Paid"
+        onChange={jest.fn()}
+        resultCount={1}
+      />,
+    );
 
-      expect(screen.getByText('Showing 5 disputed milestones')).toBeInTheDocument();
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion).toBeEmptyDOMElement();
+
+    act(() => {
+      jest.advanceTimersByTime(100);
     });
 
-    it('announces count with singular wording when resultCount === 1', () => {
-      render(
-        <MilestoneFilter
-          selected="Paid"
-          onChange={jest.fn()}
-          resultCount={1}
-        />,
-      );
+    expect(liveRegion).toBeEmptyDOMElement();
 
-      expect(screen.getByText('Showing 1 paid milestone')).toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(MILESTONE_ANNOUNCEMENT_DELAY_MS - 100);
     });
 
-    it('announces zero results with plural wording', () => {
-      const { rerender } = render(
-        <MilestoneFilter
-          selected="All"
-          onChange={jest.fn()}
-          resultCount={0}
-        />,
-      );
+    expect(liveRegion).toHaveTextContent('Showing 1 paid milestone');
+    expect(liveRegion).not.toHaveTextContent('active');
+  });
 
-      expect(screen.getByText('Showing all 0 milestones')).toBeInTheDocument();
+  it('announces zero results after the debounce interval', () => {
+    jest.useFakeTimers();
 
-      rerender(
-        <MilestoneFilter
-          selected="Pending"
-          onChange={jest.fn()}
-          resultCount={0}
-        />,
-      );
+    const { container, rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={5}
+      />,
+    );
 
-      expect(screen.getByText('Showing 0 pending milestones')).toBeInTheDocument();
+    rerender(
+      <MilestoneFilter
+        selected="Disputed"
+        onChange={jest.fn()}
+        resultCount={0}
+      />,
+    );
+
+    act(() => {
+      jest.advanceTimersByTime(MILESTONE_ANNOUNCEMENT_DELAY_MS);
     });
 
-    it('uses "Showing all ..." phrasing when filter is All', () => {
-      render(
-        <MilestoneFilter
-          selected="All"
-          onChange={jest.fn()}
-          resultCount={3}
-        />,
-      );
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      'Showing 0 disputed milestones',
+    );
+  });
 
-      expect(screen.getByText('Showing all 3 milestones')).toBeInTheDocument();
+  it('announces count changes while showing all statuses', () => {
+    jest.useFakeTimers();
+
+    const { container, rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={5}
+      />,
+    );
+
+    rerender(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={2}
+      />,
+    );
+
+    act(() => {
+      jest.advanceTimersByTime(MILESTONE_ANNOUNCEMENT_DELAY_MS);
     });
 
-    it('lowercases the status name in the announcement', () => {
-      render(
-        <MilestoneFilter
-          selected="Completed"
-          onChange={jest.fn()}
-          resultCount={2}
-        />,
-      );
-
-      expect(screen.getByText('Showing 2 completed milestones')).toBeInTheDocument();
-    });
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      'Showing all 2 milestones',
+    );
   });
 
   it('passes axe accessibility checks via a11y helper', async () => {

@@ -18,15 +18,7 @@ const FILTER_OPTIONS: MilestoneStatusFilter[] = [
   'Disputed',
 ];
 
-const ANNOUNCEMENT_DEBOUNCE_MS = 250;
-
-const getResultAnnouncement = (selected: MilestoneStatusFilter, resultCount: number) => {
-  const noun = resultCount === 1 ? 'milestone' : 'milestones';
-
-  return selected === 'All'
-    ? `Showing all ${resultCount} ${noun}`
-    : `Showing ${resultCount} ${selected.toLowerCase()} ${noun}`;
-};
+export const MILESTONE_ANNOUNCEMENT_DELAY_MS = 300;
 
 export interface MilestoneFilterProps {
   /** The currently active filter. */
@@ -65,20 +57,27 @@ export interface MilestoneFilterProps {
  */
 const MilestoneFilter = ({ selected, onChange, resultCount }: MilestoneFilterProps) => {
   const [announcement, setAnnouncement] = useState('');
-  const hasMountedRef = useRef(false);
+  const previousResult = useRef({ selected, resultCount });
 
   useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
+    const previous = previousResult.current;
+
+    if (previous.selected === selected && previous.resultCount === resultCount) {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setAnnouncement(getResultAnnouncement(selected, resultCount));
-    }, ANNOUNCEMENT_DEBOUNCE_MS);
+    previousResult.current = { selected, resultCount };
+    setAnnouncement('');
 
-    return () => window.clearTimeout(timer);
-  }, [selected, resultCount]);
+    const timeoutId = window.setTimeout(() => {
+      const milestoneLabel = resultCount === 1 ? 'milestone' : 'milestones';
+      const filterLabel = selected === 'All' ? `all ${resultCount}` : `${resultCount} ${selected.toLowerCase()}`;
+
+      setAnnouncement(`Showing ${filterLabel} ${milestoneLabel}`);
+    }, MILESTONE_ANNOUNCEMENT_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [resultCount, selected]);
 
   return (
     <div className="mb-6">

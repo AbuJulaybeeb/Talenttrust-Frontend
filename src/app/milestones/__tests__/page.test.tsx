@@ -453,9 +453,9 @@ describe('MilestoneFilter — live region announcements', () => {
   it('announces correct count after switching from All to Active filter', async () => {
     const user = userEvent.setup();
     mockedListMilestones.mockReturnValue(mixedMilestones);
-    await renderPage();
+    const { container } = await renderPage();
 
-    await waitFor(() => expect(screen.getByText(/showing all 5 milestones/i)).toBeInTheDocument());
+    expect(container.querySelector('[aria-live="polite"]')).toBeEmptyDOMElement();
 
     await user.click(screen.getByRole('radio', { name: 'Active' }));
 
