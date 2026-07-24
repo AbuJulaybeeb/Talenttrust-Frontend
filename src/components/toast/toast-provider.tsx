@@ -22,10 +22,16 @@ type ToastAction = {
   onClick: () => void;
 };
 
-type ToastInput = {
+export type ToastInput = {
   title: string;
   description?: string;
   duration?: number;
+  /**
+   * Optional correlation / request ID attached to an error toast.
+   * When present it is included in the copied details to help with bug reports.
+   * Only meaningful on error-variant toasts; ignored on success toasts.
+   */
+  correlationId?: string;
   /**
    * Optional action button rendered inside the toast.
    * Clicking it fires `onClick` and immediately dismisses the toast.
@@ -33,7 +39,7 @@ type ToastInput = {
   action?: ToastAction;
 };
 
-type ToastRecord = ToastInput & {
+export type ToastRecord = ToastInput & {
   id: string;
   variant: ToastVariant;
 };
@@ -104,6 +110,126 @@ function getToastStyles(variant: ToastVariant) {
   };
 }
 
+/**
+ * Assembles the plain-text string that will be placed on the clipboard when
+ * the user clicks "Copy details" on an error toast.
+ *
+ * Format:
+ * ```
+ * Error: <title>
+ * Details: <description>       (only if description is present)
+ * Correlation ID: <id>         (only if correlationId is present)
+ * ```
+ */
+export function buildCopyText(toast: Pick<ToastRecord, 'title' | 'description' | 'correlationId'>): string {
+  const parts: string[] = [`Error: ${toast.title}`];
+  if (toast.description) {
+    parts.push(`Details: ${toast.description}`);
+  }
+  if (toast.correlationId) {
+    parts.push(`Correlation ID: ${toast.correlationId}`);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Copies `text` to the clipboard.
+ *
+ * Primary path: `navigator.clipboard.writeText` (async, Clipboard API).
+ * Fallback path: creates a temporary `<textarea>`, selects its content, and
+ * uses the legacy `document.execCommand('copy')`. This covers browsers /
+ * environments where the async Clipboard API is unavailable (e.g. non-secure
+ * contexts, older WebViews).
+ *
+ * @returns A promise that resolves to `true` when the copy succeeded, or
+ *   `false` when both paths failed (e.g. permission denied, no selection
+ *   support).
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  // Primary: async Clipboard API
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the legacy execCommand path below.
+    }
+  }
+
+  // Fallback: legacy execCommand('copy')
+  const textarea = document.createElement('textarea');
+  try {
+    textarea.value = text;
+    // Place off-screen so there is no visible flash.
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    // Prevent iOS from zooming.
+    textarea.style.fontSize = '16px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const success = document.execCommand('copy');
+    return success;
+  } catch {
+    return false;
+  } finally {
+    if (textarea.parentNode) {
+      document.body.removeChild(textarea);
+    }
+  }
+}
+
+/**
+ * "Copy details" button rendered exclusively on error toasts.
+ *
+ * - Calls `copyToClipboard` with the assembled error details text.
+ * - Shows a brief "Copied!" confirmation label for 2 000 ms then resets.
+ * - Falls back gracefully when both Clipboard API and execCommand are
+ *   unavailable (button remains visible but the copy silently no-ops).
+ */
+function CopyDetailsButton({ toast }: { toast: ToastRecord }) {
+  const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up the reset timer on unmount to avoid state updates on
+  // an already-unmounted component.
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    const text = buildCopyText(toast);
+    const success = await copyToClipboard(text);
+
+    if (success) {
+      setCopied(true);
+      if (resetTimerRef.current !== null) {
+        clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 2000);
+    }
+  }, [toast]);
+
+  return (
+    <button
+      aria-label={copied ? 'Copied to clipboard' : 'Copy error details to clipboard'}
+      className="mt-2 rounded-md px-3 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-1 border border-[var(--border)] bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+      onClick={handleCopy}
+      type="button"
+    >
+      {copied ? '✓ Copied!' : 'Copy details'}
+    </button>
+  );
+}
+
 function ToastViewport({
   toasts,
   onDismiss,
@@ -170,6 +296,12 @@ function ToastViewport({
                   >
                     {toast.action.label}
                   </button>
+                ) : null}
+                {toast.variant === 'error' ? (
+                  // Copy-details button — error toasts only (issue #504).
+                  // Uses the Clipboard API with a documented textarea/execCommand
+                  // fallback. CopyDetailsButton manages its own "Copied!" state.
+                  <CopyDetailsButton toast={toast} />
                 ) : null}
               </div>
               <button

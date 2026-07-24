@@ -3,7 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { PreferencesProvider } from '@/lib/preferences';
-import { ToastProvider, useToast } from './toast-provider';
+import { ToastProvider, useToast, buildCopyText, copyToClipboard } from './toast-provider';
 
 function ToastHarness() {
   const { showError, showSuccess } = useToast();
@@ -1372,5 +1372,580 @@ describe('toastDuration preference', () => {
     // Advance time — none should auto-dismiss (all persistent).
     act(() => { jest.advanceTimersByTime(60000); });
     expect(screen.getAllByRole('status')).toHaveLength(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// copy-details (issue #504)
+// ---------------------------------------------------------------------------
+
+describe('buildCopyText', () => {
+  it('includes the title prefixed with "Error:"', () => {
+    const result = buildCopyText({ title: 'Wallet not connected' });
+    expect(result).toContain('Error: Wallet not connected');
+  });
+
+  it('includes description prefixed with "Details:" when present', () => {
+    const result = buildCopyText({
+      title: 'Wallet not connected',
+      description: 'Connect a wallet first.',
+    });
+    expect(result).toContain('Details: Connect a wallet first.');
+  });
+
+  it('omits the Details line when description is absent', () => {
+    const result = buildCopyText({ title: 'Network error' });
+    expect(result).not.toContain('Details:');
+  });
+
+  it('includes correlationId prefixed with "Correlation ID:" when present', () => {
+    const result = buildCopyText({
+      title: 'Payment failed',
+      correlationId: 'abc-123',
+    });
+    expect(result).toContain('Correlation ID: abc-123');
+  });
+
+  it('omits the Correlation ID line when correlationId is absent', () => {
+    const result = buildCopyText({ title: 'Payment failed' });
+    expect(result).not.toContain('Correlation ID:');
+  });
+
+  it('assembles all three lines in order when all fields are present', () => {
+    const result = buildCopyText({
+      title: 'Upload failed',
+      description: 'File size exceeds limit.',
+      correlationId: 'req-456',
+    });
+    expect(result).toBe(
+      'Error: Upload failed\nDetails: File size exceeds limit.\nCorrelation ID: req-456',
+    );
+  });
+
+  it('returns just the title line when only title is provided', () => {
+    const result = buildCopyText({ title: 'Unknown error' });
+    expect(result).toBe('Error: Unknown error');
+  });
+
+  it('handles a title that is an empty string without throwing', () => {
+    expect(() => buildCopyText({ title: '' })).not.toThrow();
+    const result = buildCopyText({ title: '' });
+    expect(result).toBe('Error: ');
+  });
+});
+
+describe('copyToClipboard', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('uses navigator.clipboard.writeText when available and returns true on success', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const result = await copyToClipboard('hello');
+    expect(writeText).toHaveBeenCalledWith('hello');
+    expect(result).toBe(true);
+  });
+
+  it('falls back to execCommand when clipboard API rejects and returns true on success', async () => {
+    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    
+    // Define execCommand before spying on it
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
+
+    const result = await copyToClipboard('fallback text');
+    expect(execCommandSpy).toHaveBeenCalledWith('copy');
+    expect(result).toBe(true);
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('falls back to execCommand when clipboard API is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
+
+    const result = await copyToClipboard('no clipboard');
+    expect(execCommandSpy).toHaveBeenCalledWith('copy');
+    expect(result).toBe(true);
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('returns false when clipboard API rejects and execCommand returns false', async () => {
+    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(false);
+
+    const result = await copyToClipboard('will fail');
+    expect(result).toBe(false);
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('returns false when both clipboard API and execCommand throw', async () => {
+    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockImplementation(() => {
+      throw new Error('execCommand unavailable');
+    });
+
+    const result = await copyToClipboard('will fail');
+    expect(result).toBe(false);
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('cleans up the temporary textarea from the DOM on success', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
+    const initialBodyChildCount = document.body.children.length;
+
+    await copyToClipboard('cleanup test');
+
+    expect(document.body.children.length).toBe(initialBodyChildCount);
+    execCommandSpy.mockRestore();
+  });
+
+  it('cleans up the temporary textarea from the DOM even when execCommand throws', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockImplementation(() => {
+      throw new Error('execCommand unavailable');
+    });
+    const initialBodyChildCount = document.body.children.length;
+
+    await copyToClipboard('cleanup error test');
+
+    expect(document.body.children.length).toBe(initialBodyChildCount);
+    execCommandSpy.mockRestore();
+  });
+});
+
+describe('copy-details button rendering', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    // Provide a working clipboard mock for all rendering tests.
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: jest.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    act(() => { jest.clearAllTimers(); });
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('renders a "Copy details" button on error toasts', () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    expect(
+      screen.getByRole('button', { name: /copy error details to clipboard/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('does NOT render a "Copy details" button on success toasts', () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger success/i }));
+
+    expect(
+      screen.queryByRole('button', { name: /copy error details to clipboard/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows "✓ Copied!" label immediately after a successful copy', async () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toHaveTextContent('✓ Copied!');
+  });
+
+  it('resets back to "Copy details" label after 2000ms', async () => {
+    // Use a long duration so the toast does not auto-dismiss while we
+    // advance the 2000ms copy-reset timer.
+    function LongErrorHarness() {
+      const { showError } = useToast();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            showError({ title: 'Persistent error', duration: 30000 })
+          }
+        >
+          Trigger long error
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <LongErrorHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger long error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
+
+    act(() => { jest.advanceTimersByTime(2000); });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /copy error details to clipboard/i })).toBeInTheDocument();
+    });
+  });
+
+  it('does not change label if copy fails (returns false)', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: jest.fn().mockRejectedValue(new Error('denied')) },
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(false);
+
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    // Label should NOT have changed to "Copied!" since copy failed.
+    expect(screen.queryByRole('button', { name: /copied to clipboard/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy error details to clipboard/i })).toBeInTheDocument();
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('copies the correct text (title + description)', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      'Error: Wallet not connected\nDetails: Connect a wallet first.',
+    );
+  });
+
+  it('copies just the title when no description is present', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    function TitleOnlyErrorHarness() {
+      const { showError } = useToast();
+      return (
+        <button
+          type="button"
+          onClick={() => showError({ title: 'Something went wrong', duration: 5000 })}
+        >
+          Trigger title-only error
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <TitleOnlyErrorHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger title-only error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(writeText).toHaveBeenCalledWith('Error: Something went wrong');
+  });
+
+  it('includes the correlationId in copied text when provided', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    function CorrelationErrorHarness() {
+      const { showError } = useToast();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            showError({
+              title: 'Payment failed',
+              description: 'Insufficient funds.',
+              correlationId: 'req-789',
+              duration: 5000,
+            })
+          }
+        >
+          Trigger correlation error
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <CorrelationErrorHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger correlation error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      'Error: Payment failed\nDetails: Insufficient funds.\nCorrelation ID: req-789',
+    );
+  });
+
+  it('uses the execCommand fallback when clipboard API is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    
+    if (!document.execCommand) {
+      Object.defineProperty(document, 'execCommand', {
+        value: () => false,
+        configurable: true,
+        writable: true,
+      });
+    }
+    const execCommandSpy = jest.spyOn(document, 'execCommand').mockReturnValue(true);
+
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(execCommandSpy).toHaveBeenCalledWith('copy');
+    expect(screen.getByRole('button', { name: /copied to clipboard/i })).toBeInTheDocument();
+    
+    execCommandSpy.mockRestore();
+  });
+
+  it('copy button has accessible aria-label that updates after copy', async () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    expect(copyBtn).toHaveAttribute('aria-label', 'Copy error details to clipboard');
+
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    const updatedBtn = screen.getByRole('button', { name: /copied to clipboard/i });
+    expect(updatedBtn).toHaveAttribute('aria-label', 'Copied to clipboard');
+  });
+
+  it('copy button has focus-visible ring styling', () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    expect(copyBtn.className).toContain('focus-visible:ring-2');
+  });
+
+  it('copy button does not dismiss the toast', async () => {
+    render(
+      <ToastProvider>
+        <ToastHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error/i }));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    const copyBtn = screen.getByRole('button', { name: /copy error details to clipboard/i });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    // Toast must still be visible after copy.
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('error toast with action button also shows the copy-details button', async () => {
+    function ErrorWithActionHarness() {
+      const { showError } = useToast();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            showError({
+              title: 'Upload failed',
+              action: { label: 'Retry', onClick: jest.fn() },
+              duration: 5000,
+            })
+          }
+        >
+          Trigger error with action
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <ErrorWithActionHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger error with action/i }));
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copy error details to clipboard/i }),
+    ).toBeInTheDocument();
   });
 });
