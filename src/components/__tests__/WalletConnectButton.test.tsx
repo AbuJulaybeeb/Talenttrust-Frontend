@@ -533,3 +533,129 @@ describe('WalletConnectButton', () => {
     jest.useFakeTimers();
   });
 });
+
+
+describe('WalletConnectButton - network badge', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
+  it('displays network badge when connected', () => {
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      network: 'Testnet',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Testnet')).toBeInTheDocument();
+    expect(screen.getByLabelText('Connected to Testnet')).toBeInTheDocument();
+  });
+
+  it('hides network badge when disconnected', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ network: null }));
+
+    render(<WalletConnectButton />);
+
+    expect(screen.queryByText('Testnet')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Connected to/)).not.toBeInTheDocument();
+  });
+
+  it('displays Mainnet network badge when connected to mainnet', () => {
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      network: 'Mainnet',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Mainnet')).toBeInTheDocument();
+    expect(screen.getByLabelText('Connected to Mainnet')).toBeInTheDocument();
+  });
+
+  it('displays Futurenet network badge', () => {
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      network: 'Futurenet',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Futurenet')).toBeInTheDocument();
+    expect(screen.getByLabelText('Connected to Futurenet')).toBeInTheDocument();
+  });
+
+  it('displays Unknown network badge gracefully', () => {
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      network: 'Unknown',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByLabelText('Connected to Unknown')).toBeInTheDocument();
+  });
+
+  it('network badge is hidden on error state', () => {
+    mockUseWallet.mockReturnValue(createWalletState({
+      error: 'Connection failed',
+      network: 'Testnet',
+    }));
+
+    render(<WalletConnectButton />);
+
+    expect(screen.queryByText('Testnet')).not.toBeInTheDocument();
+    expect(screen.getByText('Connection Error')).toBeInTheDocument();
+  });
+
+  it('network badge remains visible when copying address', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0xABCDEF1234567890',
+      network: 'Testnet',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Testnet')).toBeInTheDocument();
+
+    const copyButton = screen.getByRole('button', { name: 'Copy address to clipboard' });
+    await user.click(copyButton);
+
+    expect(screen.getByText('Testnet')).toBeInTheDocument();
+  });
+
+  it('network badge is positioned next to the address', () => {
+    const truncateAddressSpy = jest.spyOn(truncateAddressModule, 'truncateAddress')
+      .mockReturnValue('0x1234...5678');
+
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      network: 'Testnet',
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    const addressSpan = screen.getByText('0x1234...5678');
+    const networkBadge = screen.getByText('Testnet');
+
+    expect(addressSpan.parentElement).toContainElement(networkBadge);
+
+    truncateAddressSpy.mockRestore();
+  });
+});

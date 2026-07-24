@@ -6,6 +6,11 @@ import { getItem, setItem, removeItem } from '@/lib/safeStorage';
 import { usePreferences } from '@/lib/preferences';
 
 /**
+ * Supported Stellar networks.
+ */
+export type StellarNetwork = 'Mainnet' | 'Testnet' | 'Futurenet' | 'Unknown';
+
+/**
  * Shape of the value exposed by {@link WalletContext}.
  *
  * Consumed exclusively through the {@link useWallet} hook; do not read from
@@ -20,6 +25,15 @@ export type WalletContextType = {
    * @example "GAAQ…DZ7H"
    */
   address: string | null;
+
+  /**
+   * The active Stellar network name when wallet is connected, or `null` when
+   * disconnected. Possible values are 'Mainnet', 'Testnet', 'Futurenet', or
+   * 'Unknown' if the network cannot be determined.
+   *
+   * @example "Testnet" | "Mainnet"
+   */
+  network: StellarNetwork | null;
 
   /**
    * `true` while a connection attempt is in progress (i.e. between the
@@ -133,13 +147,14 @@ function useSafeToast() {
  * ```
  *
  * ## Exposed context fields
- * | Field          | Type                  | Description                                      |
- * |----------------|-----------------------|--------------------------------------------------|
- * | `address`      | `string \| null`      | Connected Stellar public key; `null` if none.    |
- * | `isConnecting` | `boolean`             | `true` while a connection attempt is in flight.  |
- * | `error`        | `string \| null`      | Last connection error message, or `null`.        |
- * | `connect`      | `() => Promise<void>` | Initiates a connection attempt (currently mock). |
- * | `disconnect`   | `() => void`          | Clears session state and storage.                |
+ * | Field          | Type                     | Description                                      |
+ * |----------------|--------------------------|-------------------------------------------------|
+ * | `address`      | `string \| null`         | Connected Stellar public key; `null` if none.    |
+ * | `network`      | `StellarNetwork \| null` | Active network name; `null` if disconnected.     |
+ * | `isConnecting` | `boolean`                | `true` while a connection attempt is in flight.  |
+ * | `error`        | `string \| null`         | Last connection error message, or `null`.        |
+ * | `connect`      | `() => Promise<void>`    | Initiates a connection attempt (currently mock). |
+ * | `disconnect`   | `() => void`             | Clears session state and storage.                |
  *
  * ## Idle auto-disconnect
  * When `idleTimeout` is a positive number the provider registers passive
@@ -172,6 +187,7 @@ export function WalletProvider({
   const idleTimeout = propIdleTimeout !== undefined ? propIdleTimeout : preferences.idleDisconnectMs;
 
   const [address, setAddress] = useState<string | null>(null);
+  const [network, setNetwork] = useState<StellarNetwork | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +200,8 @@ export function WalletProvider({
    * inside stale closures.
    */
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const STORAGE_KEY_ADDRESS = 'wallet_connected_address';
+  const STORAGE_KEY_NETWORK = 'wallet_connected_network';
 
   /**
    * Terminates the active wallet session.
@@ -201,18 +219,10 @@ export function WalletProvider({
       clearTimeout(handle);
     }
     setAddress(null);
-    removeItem(STORAGE_KEY);
-  }, []);
-
-  /**
-   * Cancels the current idle countdown and starts a fresh one.
-   *
-   * Called both when the effect first attaches (starting the initial timer)
-   * and on every {@link IDLE_EVENTS} event (resetting it). Does nothing when
-   * `idleTimeout` is `0` or there is no connected address.
-   */
-  const resetTimer = useCallback(() => {
-    if (timerRef.current !== null) {
+    setNetwork(null);
+    removeItem(STORAGE_KEY_ADDRESS);
+    removeItem(STORAGE_KEY_NETWORK);
+    if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
@@ -229,19 +239,16 @@ export function WalletProvider({
     }, idleTimeout);
   }, [address, idleTimeout, disconnect, showSuccess]);
 
-  /**
-   * Rehydrate the wallet address from `localStorage` on the first client
-   * render.
-   *
-   * The SSR guard (`typeof window === 'undefined'`) prevents this from
-   * running on the server where `window` does not exist, satisfying Next.js
-   * App Router's server-component constraints.
-   */
+  // Rehydrate address and network from storage on mount (client only)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = getItem(STORAGE_KEY);
-    if (stored) {
-      setAddress(stored);
+    const storedAddress = getItem(STORAGE_KEY_ADDRESS);
+    const storedNetwork = getItem(STORAGE_KEY_NETWORK);
+    if (storedAddress) {
+      setAddress(storedAddress);
+    }
+    if (storedNetwork && ['Mainnet', 'Testnet', 'Futurenet', 'Unknown'].includes(storedNetwork)) {
+      setNetwork(storedNetwork as StellarNetwork);
     }
   }, []);
 
@@ -293,7 +300,7 @@ export function WalletProvider({
    *   2. Waits exactly **1 second** via `setTimeout` to simulate network /
    *      extension latency (no real wallet API is called).
    *   3. Sets `address` to the hard-coded {@link MOCKED_STELLAR_ADDRESS}
-   *      constant and persists it to `localStorage` under `wallet_connected_address`.
+   *      constant, sets `network` to "Testnet", and persists both to `localStorage`.
    *   4. Resets `isConnecting` to `false` in the `finally` block.
    *
    * Intended behaviour (post-integration):
@@ -302,7 +309,8 @@ export function WalletProvider({
    *      {@link FREIGHTER_NOT_INSTALLED} if absent.
    *   3. Call `window.freighter.requestAccess()`; map a user-rejection to
    *      {@link USER_REJECTED}.
-   *   4. Validate and persist the returned Stellar public key.
+   *   4. Detect the active network from Freighter wallet state.
+   *   5. Validate and persist the returned Stellar public key and network.
    */
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -316,7 +324,13 @@ export function WalletProvider({
       // Replace with the public key returned by window.freighter.getPublicKey()
       // once the real wallet integration is in place.
       setAddress(MOCKED_STELLAR_ADDRESS);
-      setItem(STORAGE_KEY, MOCKED_STELLAR_ADDRESS);
+      setItem(STORAGE_KEY_ADDRESS, MOCKED_STELLAR_ADDRESS);
+      // ── MOCK: hard-coded network for UI development (Testnet). ────────────
+      // Replace with network detection from window.freighter.getNetworkDetails()
+      // once the real wallet integration is in place.
+      const mockNetwork: StellarNetwork = 'Testnet';
+      setNetwork(mockNetwork);
+      setItem(STORAGE_KEY_NETWORK, mockNetwork);
     } catch (_err) {
       const message = 'Failed to connect wallet';
       /**
@@ -341,7 +355,7 @@ export function WalletProvider({
   }, [showError]);
 
   return (
-    <WalletContext.Provider value={{ address, isConnecting, error, connect, disconnect }}>
+    <WalletContext.Provider value={{ address, network, isConnecting, error, connect, disconnect }}>
       {children}
     </WalletContext.Provider>
   );
@@ -351,8 +365,8 @@ export function WalletProvider({
  * Accesses the wallet connection context from any client component.
  *
  * Returns the full {@link WalletContextType} value: the connected Stellar
- * address, connection-in-progress flag, last error string, and the
- * `connect` / `disconnect` actions.
+ * address, active network, connection-in-progress flag, last error string,
+ * and the `connect` / `disconnect` actions.
  *
  * **Safety guard:** throws an `Error` with a descriptive message if called
  * outside of a `<WalletProvider>` subtree. This makes misconfigured trees
@@ -361,7 +375,7 @@ export function WalletProvider({
  *
  * @example
  * ```tsx
- * const { address, isConnecting, connect, disconnect, error } = useWallet();
+ * const { address, network, isConnecting, connect, disconnect, error } = useWallet();
  * ```
  *
  * @returns The current {@link WalletContextType} value.

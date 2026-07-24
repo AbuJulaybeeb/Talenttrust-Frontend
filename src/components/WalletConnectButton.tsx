@@ -7,7 +7,7 @@ import { truncateAddress } from '@/lib/truncateAddress';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 
 export const WalletConnectButton = () => {
-  const { address, isConnecting, error, connect, disconnect } = useWallet();
+  const { address, network, isConnecting, error, connect, disconnect } = useWallet();
   const { showError } = useToast();
 
   const { copied, copy } = useCopyToClipboard({
@@ -71,6 +71,14 @@ export const WalletConnectButton = () => {
           <span className="text-sm font-medium text-slate-700 font-mono">
             {truncateAddress(address)}
           </span>
+          {network && (
+            <span
+              className="ml-1 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
+              aria-label={`Connected to ${network}`}
+            >
+              {network}
+            </span>
+          )}
         </div>
         <button
           onClick={handleCopy}

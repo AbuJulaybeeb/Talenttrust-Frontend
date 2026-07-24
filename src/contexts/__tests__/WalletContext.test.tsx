@@ -822,3 +822,202 @@ describe('WalletContext – error toast surfacing', () => {
     expect(screen.getByTestId('inline-error').textContent).toBe('Failed to connect wallet');
   });
 });
+
+describe('WalletContext - network field', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  describe('network state management', () => {
+    it('initializes with null network', () => {
+      function NetworkConsumer() {
+        const { network } = useWallet();
+        return <div data-testid="network">{network || 'null'}</div>;
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+      expect(screen.getByTestId('network')).toHaveTextContent('null');
+    });
+
+    it('sets network to Testnet when connecting', async () => {
+      function NetworkConsumer() {
+        const { network, address, connect } = useWallet();
+        return (
+          <div>
+            <div data-testid="network">{network || 'null'}</div>
+            <div data-testid="address">{address || 'null'}</div>
+            <button onClick={connect}>Connect</button>
+          </div>
+        );
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      expect(screen.getByTestId('network')).toHaveTextContent('null');
+
+      await act(async () => {
+        screen.getByText('Connect').click();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(screen.getByTestId('network')).toHaveTextContent('Testnet');
+      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
+    });
+
+    it('clears network when disconnecting', async () => {
+      function NetworkConsumer() {
+        const { network, address, connect, disconnect } = useWallet();
+        return (
+          <div>
+            <div data-testid="network">{network || 'null'}</div>
+            <div data-testid="address">{address || 'null'}</div>
+            <button data-testid="connect-btn" onClick={connect}>Connect</button>
+            <button data-testid="disconnect-btn" onClick={disconnect}>Disconnect</button>
+          </div>
+        );
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      // Connect
+      await act(async () => {
+        screen.getByTestId('connect-btn').click();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(screen.getByTestId('network')).toHaveTextContent('Testnet');
+
+      // Disconnect
+      await act(async () => {
+        screen.getByTestId('disconnect-btn').click();
+      });
+
+      expect(screen.getByTestId('network')).toHaveTextContent('null');
+      expect(screen.getByTestId('address')).toHaveTextContent('null');
+    });
+  });
+
+  describe('network persistence', () => {
+    it('persists network to localStorage on connect', async () => {
+      function NetworkConsumer() {
+        const { connect } = useWallet();
+        return <button onClick={connect}>Connect</button>;
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      await act(async () => {
+        screen.getByText('Connect').click();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(setItem).toHaveBeenCalledWith('wallet_connected_network', 'Testnet');
+    });
+
+    it('removes network from localStorage on disconnect', async () => {
+      function NetworkConsumer() {
+        const { connect, disconnect, address } = useWallet();
+        return (
+          <div>
+            <div data-testid="address">{address || 'null'}</div>
+            <button data-testid="connect-btn" onClick={connect}>Connect</button>
+            <button data-testid="disconnect-btn" onClick={disconnect}>Disconnect</button>
+          </div>
+        );
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      await act(async () => {
+        screen.getByTestId('connect-btn').click();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+
+      await act(async () => {
+        screen.getByTestId('disconnect-btn').click();
+      });
+
+      expect(removeItem).toHaveBeenCalledWith('wallet_connected_network');
+    });
+
+    it('rehydrates network from localStorage on mount', () => {
+      const mockGetItem = getItem as jest.MockedFunction<typeof getItem>;
+      mockGetItem.mockImplementation((key: string) => {
+        if (key === 'wallet_connected_address') return MOCKED_STELLAR_ADDRESS;
+        if (key === 'wallet_connected_network') return 'Testnet';
+        return null;
+      });
+
+      function NetworkConsumer() {
+        const { network, address } = useWallet();
+        return (
+          <div>
+            <div data-testid="network">{network || 'null'}</div>
+            <div data-testid="address">{address || 'null'}</div>
+          </div>
+        );
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      expect(screen.getByTestId('network')).toHaveTextContent('Testnet');
+      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
+    });
+
+    it('ignores invalid network values in localStorage', () => {
+      const mockGetItem = getItem as jest.MockedFunction<typeof getItem>;
+      mockGetItem.mockImplementation((key: string) => {
+        if (key === 'wallet_connected_address') return MOCKED_STELLAR_ADDRESS;
+        if (key === 'wallet_connected_network') return 'InvalidNetwork';
+        return null;
+      });
+
+      function NetworkConsumer() {
+        const { network } = useWallet();
+        return <div data-testid="network">{network || 'null'}</div>;
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      expect(screen.getByTestId('network')).toHaveTextContent('null');
+    });
+  });
+
+  describe('network with unknown state', () => {
+    it('accepts Unknown as a valid network', async () => {
+      const mockGetItem = getItem as jest.MockedFunction<typeof getItem>;
+      mockGetItem.mockImplementation((key: string) => {
+        if (key === 'wallet_connected_address') return MOCKED_STELLAR_ADDRESS;
+        if (key === 'wallet_connected_network') return 'Unknown';
+        return null;
+      });
+
+      function NetworkConsumer() {
+        const { network } = useWallet();
+        return <div data-testid="network">{network || 'null'}</div>;
+      }
+
+      renderWithProviders(<NetworkConsumer />);
+
+      expect(screen.getByTestId('network')).toHaveTextContent('Unknown');
+    });
+  });
+});

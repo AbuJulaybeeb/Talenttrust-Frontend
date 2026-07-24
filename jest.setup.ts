@@ -75,6 +75,7 @@ if (typeof window !== 'undefined') {
 jest.mock('@/contexts/WalletContext', () => ({
   useWallet: jest.fn().mockReturnValue({
     address: 'GBDGTR4S5O3K7I6E7K5QH3Y2W6Z4JFQ2X3C5V7M8N9P0Q1R2S3T4U5V6W7X',
+    network: 'Testnet',
     isConnecting: false,
     error: null,
     connect: jest.fn(),
