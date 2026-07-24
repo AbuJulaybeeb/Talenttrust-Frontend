@@ -509,4 +509,122 @@ describe('ContractsPage', () => {
 
     expect(mockListContracts).toHaveBeenCalled();
   });
+
+  describe('Pagination & Filtering', () => {
+    const buildMockContracts = (count: number) => {
+      return Array.from({ length: count }, (_, i) => ({
+        contractName: `Contract ${i + 1}`,
+        parties: [],
+        totalValue: 1000 * (i + 1),
+        currency: 'USD',
+        status: i % 2 === 0 ? ('Active' as const) : ('Pending' as const),
+        createdAt: 'Jan 1, 2025',
+        milestoneCount: 0,
+      }));
+    };
+
+    it('renders initial page of contracts correctly (PAGE_SIZE = 5)', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(12));
+      render(<ContractsPage />);
+
+      // Verify that only the first 5 contracts are rendered
+      expect(screen.getByText('Contract 1')).toBeInTheDocument();
+      expect(screen.getByText('Contract 5')).toBeInTheDocument();
+      expect(screen.queryByText('Contract 6')).not.toBeInTheDocument();
+
+      // Verify page status text
+      expect(screen.getByText('Showing 5 of 12 contracts')).toBeInTheDocument();
+
+      // Verify "Load More" button is visible
+      const loadMoreBtn = screen.getByRole('button', { name: /load more/i });
+      expect(loadMoreBtn).toBeInTheDocument();
+    });
+
+    it('reveals the next batch of contracts when Load More is clicked', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(12));
+      render(<ContractsPage />);
+
+      const loadMoreBtn = screen.getByRole('button', { name: /load more/i });
+      fireEvent.click(loadMoreBtn);
+
+      // Now contracts 1-10 should be visible
+      expect(screen.getByText('Contract 6')).toBeInTheDocument();
+      expect(screen.getByText('Contract 10')).toBeInTheDocument();
+      expect(screen.queryByText('Contract 11')).not.toBeInTheDocument();
+      expect(screen.getByText('Showing 10 of 12 contracts')).toBeInTheDocument();
+
+      // Click Load More again to load the remaining 2
+      fireEvent.click(loadMoreBtn);
+      expect(screen.getByText('Contract 11')).toBeInTheDocument();
+      expect(screen.getByText('Contract 12')).toBeInTheDocument();
+      expect(screen.getByText('Showing 12 of 12 contracts')).toBeInTheDocument();
+
+      // "Load More" button should be removed from document as no more contracts are left
+      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+    });
+
+    it('resets pagination to page one when search query changes', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(12));
+      render(<ContractsPage />);
+
+      // Click load more to show 10 contracts
+      fireEvent.click(screen.getByRole('button', { name: /load more/i }));
+      expect(screen.getByText('Contract 10')).toBeInTheDocument();
+
+      // Change search term
+      const searchInput = screen.getByPlaceholderText(/search contracts\.\.\./i);
+      fireEvent.change(searchInput, { target: { value: 'Contract' } });
+
+      // Count resets back to PAGE_SIZE (5)
+      expect(screen.getByText('Showing 5 of 12 contracts')).toBeInTheDocument();
+    });
+
+    it('resets pagination to page one when status filter changes', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(12));
+      render(<ContractsPage />);
+
+      // Click load more to show 10 contracts
+      fireEvent.click(screen.getByRole('button', { name: /load more/i }));
+      expect(screen.getByText('Contract 10')).toBeInTheDocument();
+
+      // Change status filter
+      const filterSelect = screen.getByLabelText(/filter by status/i);
+      fireEvent.change(filterSelect, { target: { value: 'Active' } });
+
+      // There are 6 active contracts (i % 2 === 0: 1, 3, 5, 7, 9, 11)
+      // Since it resets to page one, only 5 of 6 are shown
+      expect(screen.getByText('Showing 5 of 6 contracts')).toBeInTheDocument();
+    });
+
+    it('handles edge case: fewer contracts than one page', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(3));
+      render(<ContractsPage />);
+
+      expect(screen.getByText('Contract 1')).toBeInTheDocument();
+      expect(screen.getByText('Contract 3')).toBeInTheDocument();
+      expect(screen.getByText('Showing 3 of 3 contracts')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+    });
+
+    it('handles edge case: exact page boundary', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(5));
+      render(<ContractsPage />);
+
+      expect(screen.getByText('Contract 1')).toBeInTheDocument();
+      expect(screen.getByText('Contract 5')).toBeInTheDocument();
+      expect(screen.getByText('Showing 5 of 5 contracts')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+    });
+
+    it('handles empty filtered results', () => {
+      mockListContracts.mockReturnValue(buildMockContracts(5));
+      render(<ContractsPage />);
+
+      const searchInput = screen.getByPlaceholderText(/search contracts\.\.\./i);
+      fireEvent.change(searchInput, { target: { value: 'Non-existent' } });
+
+      expect(screen.getByText('No contracts match your search or filter.')).toBeInTheDocument();
+      expect(screen.getByText('Showing 0 of 0 contracts')).toBeInTheDocument();
+    });
+  });
 });
