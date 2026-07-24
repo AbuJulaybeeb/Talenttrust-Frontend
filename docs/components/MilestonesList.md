@@ -1,106 +1,110 @@
-# MilestonesList Component
+# MilestonesList
 
-## Overview
+`MilestonesList` renders the contract milestone summary and milestone cards used
+throughout TalentTrust. It is a display component: callers pass the milestone
+array and, optionally, the parent contract currency. The component derives all
+warnings, tallies, and reminders from those props.
 
-The `MilestonesList` component displays the list of milestones associated with a contract. It renders each milestone's status, payout amount, and due date. The component includes an accessible search and sort toolbar to help users find and organize milestones efficiently.
+## Location
 
-## Search and Sort Toolbar
+- Component: `src/components/MilestonesList.tsx`
+- Tests: `src/components/__tests__/MilestonesList.test.tsx`
+- Supporting helpers: `src/lib/dueSoon.ts`, `src/lib/currencyMismatch.ts`,
+  `src/lib/milestoneStatusTally.ts`
 
-The component provides a toolbar above the milestones list with search and sort functionality:
+## Props
 
-### Search Input
+```ts
+export type Milestone = {
+  id: string;
+  title: string;
+  status: StatusType;
+  payout: number;
+  currency: string;
+  dueDate?: string;
+  contractId?: string;
+};
 
-- **Label**: "Search milestones" (visually hidden, accessible via screen reader)
-- **Placeholder**: "Search milestones..."
-- **Behavior**: Filters milestones by title using case-insensitive matching
-- **Partial Matches**: Supports partial string matching (e.g., "phase" matches "Design Phase", "Development Phase")
-- **Empty Query**: Shows all milestones when the search query is empty or whitespace-only
-- **No Matches**: Displays a friendly "No milestones match your search" message with a "Clear search" button
-
-### Sort Select
-
-- **Label**: "Sort by:"
-- **Options**:
-  - Due date (earliest first) - `dueDate-asc`
-  - Due date (latest first) - `dueDate-desc`
-  - Payout (lowest first) - `payout-asc`
-  - Payout (highest first) - `payout-desc`
-- **Due Date Handling**: Milestones without due dates are placed at the end when sorting by due date
-- **Tie Handling**: When milestones have identical values, their relative order is preserved
-
-### Accessibility Features
-
-- **Live Region**: An `aria-live="polite"` region announces the filtered result count to assistive technology
-- **Count Announcement**: Shows "Showing X of Y milestones" when filtering is active
-- **Labelled Controls**: Both search input and sort select have proper labels
-- **Keyboard Navigation**: All controls are fully keyboard accessible
-- **Focus Management**: Clear search button restores focus appropriately
-
-### Helper Functions
-
-The component exports two helper functions for testing and reuse:
-
-- `filterMilestonesByTitle(milestones, query)`: Filters milestones by title (case-insensitive)
-- `sortMilestones(milestones, sortOption)`: Sorts milestones by due date or payout
-
-Both functions are pure and do not mutate the original array.
-
-## Due-Soon Reminder Banner
-
-An accessible, dismissible banner is surfaced above the milestones list when there are milestones approaching their deadlines. This banner alerts both freelancers and clients about imminent payout dates, ensuring time-sensitive work is not missed.
-
-### Features
-
-- **Configurable Window**: Surfaces milestones due within a configurable timeframe defined by a named constant (default: `7` days).
-- **Status Exclusions**: Excludes milestones that are already in terminal statuses (`Paid` or `Completed`).
-- **Date Handling**: Uses a robust local-time date parser to prevent UTC-to-local shifts, ensuring that boundaries are computed accurately against local calendar days.
-- **Keyboard accessibility**:
-  - The banner container has `role="status"` to announce updates to screen readers.
-  - Links inside the banner target the specific milestone element ID (`#milestone-${id}`) to allow users to jump or scroll directly to the milestone card.
-  - Focus is programmatically restored to the scrollable milestones list container when the banner is dismissed, preventing loss of keyboard focus (WCAG 2.1.1).
-
-## Implementation Details
-
-- **File**: [src/components/MilestonesList.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/MilestonesList.tsx)
-- **Helper**: [src/lib/dueSoon.ts](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/lib/dueSoon.ts)
-- **Constant**: `REMINDER_WINDOW_DAYS = 7`
-
-## Testing
-
-### MilestonesList
-
-Comprehensive test coverage is provided in [MilestonesList.test.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/__tests__/MilestonesList.test.tsx):
-- Renders banner when due-soon milestones exist.
-- Correct pluralization (e.g., "1 milestone is due..." vs "2 milestones are due...").
-- Exclusion of terminal statuses.
-- Proper handling of due-date boundaries (exactly today, exactly 7 days from now).
-- Graceful skipping of invalid/unparseable due date strings.
-- Dismiss interaction and focus restoration checking.
-- Accessibility validation using `axe`.
-
-```bash
-npx jest src/components/__tests__/MilestonesList.test.tsx
+export type MilestonesListProps = {
+  milestones: Milestone[];
+  contractCurrency?: string;
+};
 ```
 
-### MilestoneFilter
+| Prop | Type | Required | Description |
+|---|---|---|---|
+| `milestones` | `Milestone[]` | Yes | Milestones to render. Each item becomes an article with id `milestone-${id}`. |
+| `contractCurrency` | `string` | No | Parent contract currency. When supplied, milestones whose `currency` differs from it are listed in an alert. |
 
-Comprehensive test coverage is provided in [MilestoneFilter.test.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/__tests__/MilestoneFilter.test.tsx):
-- Every status option renders as a radio input inside a `role="radiogroup"`.
-- The currently selected status is marked `checked`; all others are unchecked.
-- Pointer (click) selection calls `onChange` with the correct value exactly once.
-- Keyboard navigation via ArrowDown, ArrowUp, ArrowRight, and ArrowLeft moves between options and fires `onChange` exactly once per step.
-- The `aria-live="polite"` region announces result counts with correct singular/plural wording at 0, 1, and 2+ results.
-- The announcement uses "Showing all …" phrasing when the filter is `'All'` and lowers the status name for specific filters.
-- Axe accessibility audit passes (uses `assertNoA11yViolations` from `@/test-utils/a11y`).
+`Milestone.status` must be one of the statuses supported by `StatusBadge`
+(`Pending`, `Active`, `Completed`, `Paid`, or `Disputed`).
 
-```bash
-npx jest src/components/__tests__/MilestoneFilter.test.tsx
+## Rendered states
+
+| State | Condition | Rendered UI |
+|---|---|---|
+| Empty | `milestones.length === 0` | Section heading and `0 total`. No cards, no focusable list region, and no status summary. |
+| Populated | `milestones.length > 0` | Heading, total count, status tally chips, and one card per milestone. The card shows title, due date or `TBD`, status badge, and formatted payout. |
+| Currency mismatch | `contractCurrency` is provided and at least one milestone currency differs | `role="alert"` warning listing the mismatched milestones and formatted payouts. |
+| Due soon | Non-terminal milestones are due within `REMINDER_WINDOW_DAYS` (`7`) | Dismissible `role="status"` reminder with links to the matching milestone cards. |
+| Reminder dismissed | User activates `Dismiss reminder` | Due-soon banner is hidden for the current component instance and focus moves to the milestone list region. |
+
+Due-soon reminders exclude `Paid` and `Completed` milestones. Missing or
+unparseable `dueDate` values are ignored by the reminder logic.
+
+## Formatting and derived data
+
+- Payouts are formatted with `usePreferences().formatAmount`.
+- Currency comparisons use normalized currency codes from
+  `normalizeCurrencyCode`.
+- Status tally chips are generated by `milestoneStatusTally(milestones)`.
+- Due-soon detection uses `isDueSoon(dueDate, today, REMINDER_WINDOW_DAYS)`.
+
+## Minimal usage
+
+```tsx
+import MilestonesList, { type Milestone } from '@/components/MilestonesList';
+
+const milestones: Milestone[] = [
+  {
+    id: 'design-handoff',
+    title: 'Design handoff',
+    status: 'Pending',
+    payout: 1200,
+    currency: 'USD',
+    dueDate: '2026-08-01',
+    contractId: 'contract-123',
+  },
+];
+
+export function ContractMilestones() {
+  return (
+    <MilestonesList
+      milestones={milestones}
+      contractCurrency="USD"
+    />
+  );
+}
 ```
 
-## URL Status Filtering
+## Accessibility contract
 
-The milestones page synchronizes the active status filter with the URL query parameter `?status=`.
+- The outer section is labelled by the visible `Milestones` heading.
+- When populated, the scroll container uses `role="region"`,
+  `tabIndex={0}`, and `aria-labelledby="milestones-title milestones-count"`.
+- Empty lists do not expose a focusable region.
+- The status summary uses `role="list"` and each tally chip uses
+  `role="listitem"`.
+- Currency mismatches use `role="alert"`.
+- Due-soon reminders use `role="status"`.
+- Reminder links target the matching card id, `#milestone-${id}`.
+- Dismissing the reminder restores focus to the scroll region to avoid
+  keyboard focus loss.
 
-- **Initial State**: Read from the `?status=` URL query parameter using `useSearchParams`. Defaults to `'All'` if omitted or invalid.
-- **Filter Changes**: When a user selects a filter option, `router.replace` updates the URL query string without creating extra history entries.
-- **Accessibility**: Preserves the `aria-live` announcement for screen readers on filter change.
+## Related docs
+
+- `docs/components/StatusBadge.md`
+- `docs/components/MilestoneCreationForm.md`
+- `docs/lib/dueSoon.md`
+- `docs/lib/currencyMismatch.md`
+- `docs/lib/milestoneStatusTally.md`
