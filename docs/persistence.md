@@ -120,6 +120,31 @@ When the repository returns no milestones, the page falls back to its existing `
 
 ---
 
+## Exporting Data
+
+Users can download a JSON backup of everything persisted for TalentTrust via
+**Settings → Data → Export data as JSON**. This is implemented in
+`src/lib/dataExport.ts` and:
+
+- Reads only the app's own namespaced keys — `talenttrust_app_data` (this
+  module) and `talenttrust-user-preferences` (`src/lib/preferences.tsx`) —
+  through the `safeStorage` wrapper. Unrelated keys (e.g. the login-throttle
+  counters in `src/lib/loginThrottle.ts`) are never read or included.
+- Omits a key entirely when nothing is stored for it, so an empty store still
+  produces a valid document (`{ version, exportedAt, data: {} }`).
+- Skips (and reports via `errorReporter`, without throwing) any individual
+  key whose stored value isn't valid JSON, so one corrupt entry can't block
+  the rest of the export.
+
+```ts
+import { exportAppDataAsJson } from '@/lib/dataExport';
+
+// Builds the export, triggers a JSON file download, and returns the document.
+const exportDoc = exportAppDataAsJson();
+```
+
+---
+
 ## Clearing Stored Data
 
 To wipe all persisted data (e.g. for testing or a "reset" feature):

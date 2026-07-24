@@ -127,7 +127,10 @@ interface PreferencesContextType {
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'talenttrust-user-preferences';
+/** localStorage key that houses persisted user preferences. Exported so
+ * other modules (e.g. the data export helper) can reference it without
+ * duplicating the literal string. */
+export const STORAGE_KEY = 'talenttrust-user-preferences';
 
 /**
  * Sanitize an untrusted, already-JSON-parsed value into a valid

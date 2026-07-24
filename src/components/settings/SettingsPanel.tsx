@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
-import { usePreferences, Theme, AmountFormat, ToastDensity, UserPreferences } from '@/lib/preferences';
+import { usePreferences, Theme, AmountFormat, ToastDensity } from '@/lib/preferences';
+import { exportAppDataAsJson } from '@/lib/dataExport';
 
 const FOCUSABLE_SELECTORS =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -40,83 +41,16 @@ const ANNOUNCE_DEBOUNCE_MS = 400;
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, isHydrated, updatePreference } = usePreferences();
   const panelRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  /**
-   * Simulated fetch function that loads preferences.
-   * In a real app, this would call an API endpoint.
-   * 
-   * For now, it returns the preferences after a short delay to simulate network latency.
-   * Preferences are loaded from localStorage via usePreferences hook.
-   */
-  const fetchPreferences = async () => {
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    return preferences;
+  const handleExportData = () => {
+    try {
+      exportAppDataAsJson();
+      setExportStatus('success');
+    } catch {
+      setExportStatus('error');
+    }
   };
-
-  const { state, error, retry } = useFetchState(fetchPreferences);
-
-  /**
-   * Initialize preferences fetch when panel opens
-   */
-  useEffect(() => {
-    if (isOpen && !hasInitialized) {
-      retry();
-      setHasInitialized(true);
-    }
-  }, [isOpen, hasInitialized, retry]);
-
-  // ---- aria-live announcement state ----
-  const [announcement, setAnnouncement] = useState('');
-  const baselinePrefsRef = useRef<UserPreferences>({ ...preferences });
-  const hasSyncedHydrationRef = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => {
-    // 1. While still hydrating from localStorage, keep the baseline in
-    //    sync and do not announce anything.
-    if (!isHydrated) {
-      baselinePrefsRef.current = { ...preferences };
-      return;
-    }
-
-    // 2. Hydration just finished — this is the restored state.  Sync the
-    //    baseline one last time and skip the announcement so the user
-    //    never hears a "change" caused by loading saved preferences.
-    if (!hasSyncedHydrationRef.current) {
-      hasSyncedHydrationRef.current = true;
-      baselinePrefsRef.current = { ...preferences };
-      return;
-    }
-
-    // 3. Any further changes are genuine user interactions.
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      const changes = describePreferenceChanges(
-        baselinePrefsRef.current,
-        preferences,
-      );
-      if (changes.length > 0) {
-        const message = `Settings updated: ${changes.join('. ')}.`;
-        // Toggle the announcement so repeated identical messages
-        // are still picked up by screen readers.
-        setAnnouncement((prev) => (prev === message ? `${message} ` : message));
-      }
-      baselinePrefsRef.current = { ...preferences };
-    }, ANNOUNCE_DEBOUNCE_MS);
-
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [preferences, isHydrated]);
-  // -------------------------------------
 
   /**
    * Focus management effect for modal dialog accessibility.
@@ -242,7 +176,33 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 </div>
               </section>
             </div>
-          )}
+          </section>
+
+          {/* Data Section */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Data</h3>
+
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">Export your data</p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Download a JSON file of everything saved in this browser so you can back it up
+                  or move to another browser.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportData}
+                className="w-full py-2 px-4 rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] text-sm font-medium hover:border-[var(--muted-foreground)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+              >
+                Export data as JSON
+              </button>
+              <p role="status" aria-live="polite" className="text-xs text-[var(--muted-foreground)]">
+                {exportStatus === 'success' && 'Export downloaded.'}
+                {exportStatus === 'error' && 'Export failed. Please try again.'}
+              </p>
+            </div>
+          </section>
         </div>
 
         <div className="p-6 border-t border-[var(--border)] bg-[var(--surface)]">

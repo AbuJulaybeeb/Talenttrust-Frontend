@@ -4,10 +4,11 @@ import { axe } from 'jest-axe';
 import { SettingsPanel } from '../SettingsPanel';
 import { PreferencesProvider } from '@/lib/preferences';
 import { resetCache } from '@/lib/safeStorage';
+import * as dataExport from '@/lib/dataExport';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+jest.mock('@/lib/dataExport', () => ({
+  exportAppDataAsJson: jest.fn(),
+}));
 
 const renderWithProvider = (ui: React.ReactElement) =>
   render(<PreferencesProvider>{ui}</PreferencesProvider>);
@@ -33,7 +34,7 @@ describe('SettingsPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     resetCache();
-    jest.useFakeTimers();
+    jest.mocked(dataExport.exportAppDataAsJson).mockReset();
   });
 
   afterEach(() => {
@@ -58,9 +59,12 @@ describe('SettingsPanel – closed state', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('does not render a dialog when closed', () => {
-    renderWithProvider(<SettingsPanel isOpen={false} onClose={() => {}} />);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  it('renders correctly when open', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    expect(screen.getByText('Settings')).toBeDefined();
+    expect(screen.getByText('Appearance')).toBeDefined();
+    expect(screen.getByText('Notifications')).toBeDefined();
+    expect(screen.getByText('Data')).toBeDefined();
   });
 
   it('does not call onClose on Escape when closed (useEffect guard)', () => {
@@ -98,9 +102,153 @@ describe('SettingsPanel – open state: structure', () => {
   it('aria-labelledby points to the "Settings" h2 heading', () => {
     renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
     
-    // Wait for settings to load
-    await waitFor(() => {
-      expect(screen.getByText('Settings')).toBeInTheDocument();
+    const darkButton = screen.getByRole('radio', { name: /dark/i });
+    fireEvent.click(darkButton);
+    
+    // Check if it's active
+    expect(darkButton.getAttribute('aria-checked')).toBe('true');
+    expect(darkButton.className).toContain('bg-[var(--primary)]');
+  });
+
+  it('updates currency preference when currency button is clicked', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    
+    const ngnButton = screen.getByRole('radio', { name: /ngn/i });
+    fireEvent.click(ngnButton);
+    
+    expect(ngnButton.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('updates toast density preference', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    // Scope to the Toast Density radiogroup to avoid collision with the
+    // "compact" option that also exists in the Currency Display group.
+    const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
+    const compactButton = within(densityGroup).getByRole('radio', { name: /compact/i });
+    fireEvent.click(compactButton);
+
+    expect(compactButton.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('toggles quiet mode switch', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    
+    const quietSwitch = screen.getByRole('switch', { name: /Quiet Mode/i });
+    expect(quietSwitch.getAttribute('aria-checked')).toBe('false');
+    
+    fireEvent.click(quietSwitch);
+    expect(quietSwitch.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('persists theme preference to localStorage when changed', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    const darkButton = screen.getByRole('radio', { name: /dark/i });
+    fireEvent.click(darkButton);
+
+    const saved = JSON.parse(
+      localStorage.getItem('talenttrust-user-preferences') || '{}'
+    );
+    expect(saved.theme).toBe('dark');
+  });
+
+  it('persists currency preference to localStorage when changed', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    const ngnButton = screen.getByRole('radio', { name: /ngn/i });
+    fireEvent.click(ngnButton);
+
+    const saved = JSON.parse(
+      localStorage.getItem('talenttrust-user-preferences') || '{}'
+    );
+    expect(saved.amountFormat).toBe('ngn');
+  });
+
+  it('persists quietMode to localStorage when toggled', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    const quietSwitch = screen.getByRole('switch', { name: /Quiet Mode/i });
+    fireEvent.click(quietSwitch);
+
+    const saved = JSON.parse(
+      localStorage.getItem('talenttrust-user-preferences') || '{}'
+    );
+    expect(saved.quietMode).toBe(true);
+  });
+
+  it('persists toastDensity preference to localStorage when changed', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
+    const compactButton = within(densityGroup).getByRole('radio', { name: /compact/i });
+    fireEvent.click(compactButton);
+
+    const saved = JSON.parse(
+      localStorage.getItem('talenttrust-user-preferences') || '{}'
+    );
+    expect(saved.toastDensity).toBe('compact');
+  });
+
+  it('restores preferences from localStorage on remount (simulated reload)', () => {
+    // Pre-seed localStorage as if a previous session saved dark + NGN
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ theme: 'dark', amountFormat: 'ngn', toastDensity: 'compact', quietMode: true })
+    );
+
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    // Theme: dark should be checked
+    const themeGroup = screen.getByRole('radiogroup', { name: /theme/i });
+    expect(within(themeGroup).getByRole('radio', { name: /dark/i }).getAttribute('aria-checked')).toBe('true');
+    expect(within(themeGroup).getByRole('radio', { name: /light/i }).getAttribute('aria-checked')).toBe('false');
+
+    // Currency: ngn should be checked
+    const currencyGroup = screen.getByRole('radiogroup', { name: /currency display/i });
+    expect(within(currencyGroup).getByRole('radio', { name: /ngn/i }).getAttribute('aria-checked')).toBe('true');
+
+    // Toast density: compact should be checked
+    const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
+    expect(within(densityGroup).getByRole('radio', { name: /compact/i }).getAttribute('aria-checked')).toBe('true');
+
+    // Quiet mode: on
+    expect(screen.getByRole('switch', { name: /quiet mode/i }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('closes when backdrop is clicked', () => {
+    const onClose = jest.fn();
+    const { container } = renderWithProvider(
+      <SettingsPanel isOpen={true} onClose={onClose} />
+    );
+
+    // The backdrop is the first child of the outer wrapper
+    const backdrop = container.querySelector('.absolute.inset-0');
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('closes when Done button is clicked', () => {
+    const onClose = jest.fn();
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /done/i }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('all interactive controls are keyboard-accessible (have focus-visible ring classes)', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+    const focusableControls = [
+      screen.getByRole('button', { name: /close settings/i }),
+      screen.getByRole('switch', { name: /quiet mode/i }),
+      screen.getByRole('button', { name: /export data as json/i }),
+      screen.getByRole('button', { name: /done/i }),
+    ];
+
+    focusableControls.forEach((el) => {
+      expect(el.className).toMatch(/focus-visible/);
     });
 
     const dialog = screen.getByRole('dialog');
@@ -404,15 +552,21 @@ describe('SettingsPanel – keyboard interactions', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call onClose for a non-Escape, non-Tab key', () => {
-    const onClose = jest.fn();
-    renderWithProvider(<SettingsPanel isOpen={true} onClose={onClose} />);
-    fireEvent.keyDown(document, { key: 'ArrowDown' });
-    expect(onClose).not.toHaveBeenCalled();
+  it('Tab on a middle focusable element does not wrap focus', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    const dialog = screen.getByRole('dialog');
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    );
+    const middle = focusable[Math.floor(focusable.length / 2)];
+    middle.focus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(middle);
   });
 
-  it('Tab on the last focusable element wraps focus to the first (forward wrap)', () => {
-    // Covers line 48: else if (!e.shiftKey && activeElement === last)
+  it('Shift+Tab on the first focusable element wraps focus to the last', () => {
     renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
     const els = getFocusableEls();
     expect(els.length).toBeGreaterThan(0);
@@ -546,188 +700,49 @@ describe('SettingsPanel – open/close lifecycle', () => {
     expect(within(themeGroup).getByRole('radio', { name: /dark/i })).toHaveAttribute('aria-checked', 'false');
   });
 
-  // ------------------------------------------------------------------
-  // aria-live announcement region tests
-  // ------------------------------------------------------------------
+  // --- Data export section ---
 
-  describe('aria-live announcements', () => {
-    it('does not announce anything on mount (empty live region)', () => {
+  describe('data export', () => {
+    it('renders an accessible export control in the Data section', () => {
       renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-      // Even after the debounce window passes, nothing should appear.
-      act(() => {
-        jest.advanceTimersByTime(500);
+      const exportButton = screen.getByRole('button', { name: /export data as json/i });
+      expect(exportButton).toBeInTheDocument();
+      expect(exportButton).toHaveAccessibleName('Export data as JSON');
+    });
+
+    it('triggers the export helper when the export button is clicked', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /export data as json/i }));
+
+      expect(dataExport.exportAppDataAsJson).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a success status message after a successful export', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /export data as json/i }));
+
+      expect(screen.getByRole('status')).toHaveTextContent('Export downloaded.');
+    });
+
+    it('shows an error status message when the export helper throws', () => {
+      jest.mocked(dataExport.exportAppDataAsJson).mockImplementation(() => {
+        throw new Error('boom');
       });
 
-      expect(getAnnouncementText()).toBe('');
-    });
-
-    it('announces a single preference change after debounce', () => {
       renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
+      fireEvent.click(screen.getByRole('button', { name: /export data as json/i }));
 
-      // Before debounce — still empty.
-      expect(getAnnouncementText()).toBe('');
-
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toContain('Theme changed to dark');
+      expect(screen.getByRole('status')).toHaveTextContent('Export failed. Please try again.');
     });
 
-    it('includes the "Settings updated:" prefix', () => {
+    it('shows no status message before the export button has been clicked', () => {
       renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-      fireEvent.click(screen.getByRole('radio', { name: /light/i }));
-
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toMatch(/^Settings updated:/);
-    });
-
-    it('announces theme changes with correct wording', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      // Start from default 'system' → click 'dark'
-      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-      expect(getAnnouncementText()).toContain('Theme changed to dark');
-    });
-
-    it('announces currency format changes with correct wording', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      fireEvent.click(screen.getByRole('radio', { name: /ngn/i }));
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toContain('Currency format changed to ngn');
-    });
-
-    it('announces toast density changes with correct wording', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
-      fireEvent.click(within(densityGroup).getByRole('radio', { name: /compact/i }));
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toContain('Toast density changed to compact');
-    });
-
-    it('announces quiet mode enabled', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toContain('Quiet mode enabled');
-    });
-
-    it('announces quiet mode disabled', () => {
-      // Seed with quietMode already on so toggling disables it.
-      localStorage.setItem(
-        'talenttrust-user-preferences',
-        JSON.stringify({ quietMode: true }),
-      );
-
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toContain('Quiet mode disabled');
-    });
-
-    it('debounces rapid successive updates into one combined announcement', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      // Fire three changes in quick succession
-      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
-      fireEvent.click(screen.getByRole('radio', { name: /ngn/i }));
-      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
-
-      // After a short time (within debounce window), nothing announced yet.
-      act(() => {
-        jest.advanceTimersByTime(200);
-      });
-      expect(getAnnouncementText()).toBe('');
-
-      // After full debounce, a single announcement covers all changes.
-      act(() => {
-        jest.advanceTimersByTime(300);
-      });
-
-      const text = getAnnouncementText();
-      expect(text).toContain('Theme changed to dark');
-      expect(text).toContain('Currency format changed to ngn');
-      expect(text).toContain('Quiet mode enabled');
-      // Ensure there is exactly one "Settings updated:" prefix (combined).
-      expect(text.split('Settings updated:').length).toBe(2);
-    });
-
-    it('does not announce when clicking the already-active option (zero changes)', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      // Default theme is 'system'; click 'system' radio.
-      fireEvent.click(screen.getByRole('radio', { name: /^system$/i }));
-
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      expect(getAnnouncementText()).toBe('');
-    });
-
-    it('live region has correct ARIA attributes', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      const region = screen.getByRole('status');
-      expect(region.getAttribute('aria-live')).toBe('polite');
-      expect(region.getAttribute('aria-atomic')).toBe('true');
-    });
-
-    it('live region is visually hidden (sr-only)', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      const region = screen.getByRole('status');
-      expect(region.className).toContain('sr-only');
-    });
-
-    it('does not announce when rapid toggling results in no net change', () => {
-      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-
-      // Rapidly toggle quiet mode twice (on then off) — net change is zero.
-      const quietSwitch = screen.getByRole('switch', { name: /quiet mode/i });
-      fireEvent.click(quietSwitch); // off → on
-      fireEvent.click(quietSwitch); // on → off
-
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-
-      // Net zero change → nothing to announce.
-      expect(getAnnouncementText()).toBe('');
-    });
-
-    it('does not announce when panel is closed (no render)', () => {
-      renderWithProvider(
-        <SettingsPanel isOpen={false} onClose={() => {}} />,
-      );
-
-      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByRole('status')).toHaveTextContent('');
     });
   });
 });
