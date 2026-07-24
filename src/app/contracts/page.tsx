@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import BackToTop from '../../components/BackToTop';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
 import { listContracts, saveContract } from '@/lib/repository';
@@ -13,6 +14,7 @@ const ContractsPage: React.FC = () => {
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   // Pagination, search, and filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,7 +70,9 @@ const ContractsPage: React.FC = () => {
 
   return (
     <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold mb-6">Contracts</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold mb-6 focus-visible:outline-none">
+        Contracts
+      </h1>
 
       {!showForm && contracts.length === 0 && (
         <EmptyState
@@ -118,45 +122,23 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
-
-          <div className="mb-4 text-sm text-slate-500" aria-live="polite">
-            Showing {Math.min(visibleCount, filteredContracts.length)} of {filteredContracts.length} contract{filteredContracts.length === 1 ? '' : 's'}
+          {/* TODO: Replace with a proper ContractSummary list component. */}
+          <ul className="space-y-4">
+            {contracts.map((contract, idx) => (
+              <li
+                key={`${contract.contractName}-${idx}`}
+                className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <p className="font-semibold text-slate-900">{contract.contractName}</p>
+                <p className="text-sm text-slate-500">
+                  {contract.status} · Created {contract.createdAt}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex justify-end">
+            <BackToTop focusTargetRef={headingRef} />
           </div>
-
-          {filteredContracts.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 rounded-3xl border border-dashed border-slate-200 bg-white p-6 shadow-sm">
-              No contracts match your search or filter.
-            </div>
-          ) : (
-            <>
-              <ul className="space-y-4">
-                {filteredContracts.slice(0, visibleCount).map((contract, idx) => (
-                  <li
-                    key={`${contract.contractName}-${idx}`}
-                    className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-                  >
-                    <p className="font-semibold text-slate-900">{contract.contractName}</p>
-                    <p className="text-sm text-slate-500">
-                      {contract.status} · Created {contract.createdAt}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-
-              {hasMore && (
-                <div className="mt-6 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={handleLoadMore}
-                    className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                    aria-label="Load more contracts"
-                  >
-                    Load More
-                  </button>
-                </div>
-              )}
-            </>
-          )}
         </>
       )}
 
@@ -171,4 +153,3 @@ const ContractsPage: React.FC = () => {
 };
 
 export default ContractsPage;
-
