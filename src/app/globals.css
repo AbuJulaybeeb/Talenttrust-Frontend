@@ -80,6 +80,7 @@
   --status-warning-foreground: #fcd34d;
 }
 
+:root {
   /* High-contrast status badge print styles */
   --status-print-border: #000000;
   --status-print-text: #000000;
