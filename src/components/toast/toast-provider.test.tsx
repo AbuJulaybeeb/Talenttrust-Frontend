@@ -1,9 +1,10 @@
 /// <reference types="jest" />
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode } from 'react';
-import { PreferencesProvider } from '@/lib/preferences';
-import { ToastProvider, useToast, buildCopyText, copyToClipboard } from './toast-provider';
+import { StrictMode, useState } from 'react';
+import { PreferencesProvider, usePreferences } from '@/lib/preferences';
+import { ToastAnnouncer, ToastProvider, ToastRow, ToastViewport, useToast } from './toast-provider';
+import * as toastStyles from './toast-styles';
 
 function ToastHarness() {
   const { showError, showSuccess } = useToast();
@@ -2104,5 +2105,182 @@ describe('copy-details button rendering', () => {
     expect(
       screen.getByRole('button', { name: /copy error details to clipboard/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('row and derived-data memoization', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.clearAllTimers();
+    });
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  function Trigger({ title }: { title: string }) {
+    const { showSuccess } = useToast();
+    return (
+      <button onClick={() => showSuccess({ title, duration: 2000 })} type="button">
+        {`Create ${title}`}
+      </button>
+    );
+  }
+
+  /**
+   * Mounts `ToastProvider` behind its own unrelated state so that clicking
+   * "Unrelated update" re-renders `ToastProvider` (a new element is created
+   * for it on every `NoisyAncestor` render) without touching toasts or
+   * preferences — reproducing the "unrelated state change" from the ticket.
+   */
+  function NoisyAncestor({ children }: { children: React.ReactNode }) {
+    const [count, setCount] = useState(0);
+    return (
+      <div>
+        <button onClick={() => setCount((current) => current + 1)} type="button">
+          Unrelated update
+        </button>
+        <span data-testid="unrelated-count">{count}</span>
+        <ToastProvider>{children}</ToastProvider>
+      </div>
+    );
+  }
+
+  function isMemoComponent(value: unknown) {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      (value as { $$typeof?: symbol }).$$typeof === Symbol.for('react.memo')
+    );
+  }
+
+  it('wraps ToastRow, ToastViewport, and ToastAnnouncer in React.memo', () => {
+    expect(isMemoComponent(ToastRow)).toBe(true);
+    expect(isMemoComponent(ToastViewport)).toBe(true);
+    expect(isMemoComponent(ToastAnnouncer)).toBe(true);
+  });
+
+  it("does not recompute a toast row's derived styles when an unrelated ancestor re-renders", () => {
+    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
+
+    render(
+      <NoisyAncestor>
+        <Trigger title="Milestone" />
+      </NoisyAncestor>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /create milestone/i }));
+    expect(stylesSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
+    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
+    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
+
+    // The unrelated state did update…
+    expect(screen.getByTestId('unrelated-count')).toHaveTextContent('3');
+    // …but the toast row's derived data was not recomputed, and the toast
+    // itself is unaffected.
+    expect(stylesSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Milestone');
+  });
+
+  it('recomputes styles only for a newly added toast, not for existing rows', () => {
+    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
+
+    render(
+      <ToastProvider>
+        <Trigger title="Toast A" />
+        <Trigger title="Toast B" />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /create toast a/i }));
+    expect(stylesSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /create toast b/i }));
+    expect(stylesSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not recompute a surviving toast's styles when a sibling toast is dismissed", () => {
+    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
+
+    render(
+      <ToastProvider>
+        <Trigger title="Toast A" />
+        <Trigger title="Toast B" />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /create toast a/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create toast b/i }));
+    expect(stylesSpy).toHaveBeenCalledTimes(2);
+
+    const dismissButtons = screen.getAllByRole('button', { name: /dismiss success notification/i });
+    fireEvent.click(dismissButtons[0]);
+
+    expect(screen.getByText('Toast B', { selector: 'p' })).toBeInTheDocument();
+    expect(stylesSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('computes styles exactly once per toast across a large, evicting burst of toasts', () => {
+    const stylesSpy = jest.spyOn(toastStyles, 'getToastStyles');
+
+    function BurstTrigger() {
+      const { showSuccess } = useToast();
+      return (
+        <button onClick={() => showSuccess({ title: 'Burst toast', duration: 2000 })} type="button">
+          Fire one
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <BurstTrigger />
+      </ToastProvider>,
+    );
+
+    const fireButton = screen.getByRole('button', { name: /fire one/i });
+    for (let i = 0; i < 25; i += 1) {
+      fireEvent.click(fireButton);
+    }
+
+    // Every created toast gets exactly one style computation the moment it
+    // mounts, even though only MAX_VISIBLE_TOASTS (4) remain after eviction.
+    expect(stylesSpy).toHaveBeenCalledTimes(25);
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+  });
+
+  it('still updates the viewport when a relevant preference actually changes, even amid unrelated noise', () => {
+    function DensityToggle() {
+      const { updatePreference } = usePreferences();
+      return (
+        <button onClick={() => updatePreference('toastDensity', 'compact')} type="button">
+          Switch to compact
+        </button>
+      );
+    }
+
+    render(
+      <PreferencesProvider>
+        <NoisyAncestor>
+          <Trigger title="Milestone" />
+          <DensityToggle />
+        </NoisyAncestor>
+      </PreferencesProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /create milestone/i }));
+
+    const viewport = screen.getByLabelText('Notifications');
+    expect(viewport.className).toMatch(/gap-3/);
+
+    fireEvent.click(screen.getByRole('button', { name: /unrelated update/i }));
+    fireEvent.click(screen.getByRole('button', { name: /switch to compact/i }));
+
+    expect(viewport.className).toMatch(/gap-1\.5/);
   });
 });
