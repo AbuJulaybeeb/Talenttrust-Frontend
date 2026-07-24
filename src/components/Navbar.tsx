@@ -16,12 +16,32 @@ const NAV_ROUTES = [
 ] as const;
 
 /**
+ * Returns true when `pathname` matches `href` exactly or is a nested
+ * sub-route of it (e.g. `/contracts/abc` is nested under `/contracts`).
+ *
+ * The root `/` segment is intentionally excluded from prefix matching to
+ * avoid it matching every route.
+ *
+ * @internal
+ */
+export function isNavRouteActive(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  // Prevent the root path from matching everything via prefix check.
+  if (href === '/') return false;
+  // Match nested routes: pathname must start with href followed by '/'.
+  return pathname.startsWith(href + '/');
+}
+
+/**
  * Navbar — accessible primary navigation for the TalentTrust application.
  *
  * Renders persistent links to /contracts, /milestones, and /reputation.
  * The active route is determined via `usePathname` and announced to
- * assistive technology through `aria-current="page"`. Inactive routes
- * are styled with subdued foreground color to reduce visual noise.
+ * assistive technology through `aria-current="page"`. Both exact matches
+ * and nested sub-routes (e.g. `/contracts/abc`) are treated as active so
+ * the correct nav item is highlighted regardless of nesting depth.
+ * Inactive routes are styled with subdued foreground color to reduce
+ * visual noise.
  *
  * @remarks
  * - This component is marked `'use client'` because it consumes
@@ -46,7 +66,7 @@ export default function Navbar(): React.JSX.Element {
     <nav aria-label="Primary">
       <ul className="flex flex-wrap items-center gap-1 sm:gap-2">
         {NAV_ROUTES.map(({ href, label }) => {
-          const isActive = pathname === href;
+          const isActive = isNavRouteActive(pathname, href);
 
           return (
             <li key={href}>
