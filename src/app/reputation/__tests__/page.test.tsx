@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { ReputationPageContent } from '../page';
+import { render, screen, fireEvent } from '@testing-library/react';
+import ReputationPage, { ReputationPageContent } from '../page';
 
 // Mock the ReputationProfile component to avoid complex rendering
 jest.mock('../../../components/ReputationProfile', () => {
@@ -8,9 +8,13 @@ jest.mock('../../../components/ReputationProfile', () => {
     return (
       <div data-testid="reputation-profile">
         <div data-testid="reputation-score">{props.score ?? 'N/A'}</div>
-        <div data-testid="reputation-level">{props.level ?? (props.score === 50 ? 'Expert' : 'Community Member')}</div>
+        <div data-testid="reputation-level">
+          {props.level ?? (props.score === 50 ? 'Expert' : 'Community Member')}
+        </div>
         <div data-testid="reputation-name">{props.name}</div>
-        <div data-testid="reputation-history-count">{props.history?.length ?? 0}</div>
+        <div data-testid="reputation-history-count">
+          {props.history?.length ?? 0}
+        </div>
         {props.history && props.history.length > 0 && (
           <ul data-testid="reputation-history">
             {props.history.map((event: any) => (
@@ -26,42 +30,64 @@ jest.mock('../../../components/ReputationProfile', () => {
 });
 
 describe('ReputationPageContent', () => {
-  describe('State 1: No Reputation', () => {
+  describe('State 1: No Reputation (Empty State)', () => {
     it('renders EmptyState when reputation data is null', () => {
       render(<ReputationPageContent reputationData={null} />);
 
-      expect(screen.getByText('No reputation yet')).toBeInTheDocument();
-      expect(screen.getByText('Your reputation will be built as you complete contracts and receive feedback from clients. Start by creating and fulfilling your first contract.')).toBeInTheDocument();
-      expect(screen.queryByTestId('reputation-profile')).not.toBeInTheDocument();
+      expect(screen.getAllByText('No reputation yet').length).toBeGreaterThan(0);
+      expect(
+        screen.getByText(
+          'Your reputation will be built as you complete contracts and receive feedback from clients. Start by creating and fulfilling your first contract.'
+        )
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
     });
 
     it('renders EmptyState when reputation data is undefined', () => {
       render(<ReputationPageContent reputationData={undefined} />);
 
-      expect(screen.getByText('No reputation yet')).toBeInTheDocument();
-      expect(screen.queryByTestId('reputation-profile')).not.toBeInTheDocument();
+      expect(screen.getAllByText('No reputation yet').length).toBeGreaterThan(0);
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
     });
 
     it('renders EmptyState when score is null or undefined', () => {
       const data = { score: null, history: [] };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByText('No reputation yet')).toBeInTheDocument();
-      expect(screen.queryByTestId('reputation-profile')).not.toBeInTheDocument();
+      expect(screen.getAllByText('No reputation yet').length).toBeGreaterThan(0);
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
     });
 
     it('renders EmptyState when score is negative', () => {
       const data = { score: -5, history: [] };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByText('No reputation yet')).toBeInTheDocument();
-      expect(screen.queryByTestId('reputation-profile')).not.toBeInTheDocument();
+      expect(screen.getAllByText('No reputation yet').length).toBeGreaterThan(0);
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
     });
 
     it('does not render ReputationProfile when there is no reputation data', () => {
       render(<ReputationPageContent />);
 
-      expect(screen.queryByTestId('reputation-profile')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
+    });
+
+    it('announces empty state for assistive technology via role="status" and aria-live="polite"', () => {
+      render(<ReputationPageContent reputationData={null} />);
+
+      const announcer = screen.getByRole('status');
+      expect(announcer).toHaveAttribute('aria-live', 'polite');
+      expect(announcer).toHaveTextContent('No reputation yet');
     });
   });
 
@@ -76,10 +102,16 @@ describe('ReputationPageContent', () => {
 
       expect(screen.getByTestId('reputation-profile')).toBeInTheDocument();
       expect(screen.getByTestId('reputation-score')).toHaveTextContent('42');
-      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Community Member');
+      expect(screen.getByTestId('reputation-level')).toHaveTextContent(
+        'Community Member'
+      );
       expect(screen.getByTestId('reputation-name')).toHaveTextContent('Alice');
-      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent('0');
-      expect(screen.queryByTestId('reputation-history')).not.toBeInTheDocument();
+      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent(
+        '0'
+      );
+      expect(
+        screen.queryByTestId('reputation-history')
+      ).not.toBeInTheDocument();
     });
 
     it('passes correct props to ReputationProfile with partial data', () => {
@@ -90,7 +122,9 @@ describe('ReputationPageContent', () => {
       render(<ReputationPageContent reputationData={data} userName="Bob" />);
 
       expect(screen.getByTestId('reputation-score')).toHaveTextContent('65');
-      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Active Member');
+      expect(screen.getByTestId('reputation-level')).toHaveTextContent(
+        'Active Member'
+      );
       expect(screen.getByTestId('reputation-name')).toHaveTextContent('Bob');
     });
   });
@@ -116,15 +150,27 @@ describe('ReputationPageContent', () => {
         level: 'Trusted Contributor',
         history,
       };
-      render(<ReputationPageContent reputationData={data} userName="Charlie" />);
+      render(
+        <ReputationPageContent reputationData={data} userName="Charlie" />
+      );
 
       expect(screen.getByTestId('reputation-profile')).toBeInTheDocument();
       expect(screen.getByTestId('reputation-score')).toHaveTextContent('88');
-      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Trusted Contributor');
-      expect(screen.getByTestId('reputation-name')).toHaveTextContent('Charlie');
-      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent('2');
-      expect(screen.getByTestId('history-event-1')).toHaveTextContent('Verification: Completed identity verification');
-      expect(screen.getByTestId('history-event-2')).toHaveTextContent('On-chain review: Received positive trust signal');
+      expect(screen.getByTestId('reputation-level')).toHaveTextContent(
+        'Trusted Contributor'
+      );
+      expect(screen.getByTestId('reputation-name')).toHaveTextContent(
+        'Charlie'
+      );
+      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent(
+        '2'
+      );
+      expect(screen.getByTestId('history-event-1')).toHaveTextContent(
+        'Verification: Completed identity verification'
+      );
+      expect(screen.getByTestId('history-event-2')).toHaveTextContent(
+        'On-chain review: Received positive trust signal'
+      );
     });
 
     it('renders all history items when present', () => {
@@ -136,30 +182,208 @@ describe('ReputationPageContent', () => {
       const data = { score: 90, history };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent('3');
+      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent(
+        '3'
+      );
       expect(screen.getByTestId('history-event-1')).toBeInTheDocument();
       expect(screen.getByTestId('history-event-2')).toBeInTheDocument();
       expect(screen.getByTestId('history-event-3')).toBeInTheDocument();
     });
+
+    it('announces loaded state for assistive technology via role="status" and aria-live="polite"', () => {
+      const data = { score: 88, history: [] };
+      render(<ReputationPageContent reputationData={data} />);
+
+      const announcer = screen.getByRole('status');
+      expect(announcer).toHaveAttribute('aria-live', 'polite');
+      expect(announcer).toHaveTextContent('Reputation profile loaded');
+    });
+  });
+
+  describe('State 4: Loading State', () => {
+    it('renders loading skeleton when fetchState="loading"', () => {
+      render(<ReputationPageContent fetchState="loading" />);
+
+      expect(screen.getByTestId('reputation-loading')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('No reputation yet')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-error')
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders loading skeleton when isLoading={true}', () => {
+      render(<ReputationPageContent isLoading={true} />);
+
+      expect(screen.getByTestId('reputation-loading')).toBeInTheDocument();
+    });
+
+    it('announces loading state for assistive tech via role="status" and aria-live="polite"', () => {
+      render(<ReputationPageContent isLoading={true} />);
+
+      const announcer = screen.getByRole('status');
+      expect(announcer).toHaveAttribute('aria-live', 'polite');
+      expect(announcer).toHaveTextContent('Loading reputation…');
+    });
+
+    it('sets aria-busy="true" on main element during loading', () => {
+      const { container } = render(
+        <ReputationPageContent fetchState="loading" />
+      );
+
+      const mainElement = container.querySelector('main');
+      expect(mainElement).toHaveAttribute('aria-busy', 'true');
+    });
+  });
+
+  describe('State 5: Error State & Retry', () => {
+    it('renders error view when fetchState="error"', () => {
+      render(<ReputationPageContent fetchState="error" />);
+
+      expect(screen.getByTestId('reputation-error')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load reputation')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('No reputation yet')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-loading')
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders error view when isError={true}', () => {
+      render(<ReputationPageContent isError={true} />);
+
+      expect(screen.getByTestId('reputation-error')).toBeInTheDocument();
+    });
+
+    it('displays custom error message when provided via errorMessage prop', () => {
+      render(
+        <ReputationPageContent errorMessage="Network timeout while fetching reputation." />
+      );
+
+      expect(
+        screen.getAllByText('Network timeout while fetching reputation.').length
+      ).toBeGreaterThan(0);
+    });
+
+    it('displays error message from Error object when error prop is provided', () => {
+      const customError = new Error('Database connection failed.');
+      render(<ReputationPageContent error={customError} />);
+
+      expect(
+        screen.getAllByText('Database connection failed.').length
+      ).toBeGreaterThan(0);
+    });
+
+    it('announces error state for assistive tech via role="alert" and aria-live="assertive"', () => {
+      render(
+        <ReputationPageContent errorMessage="Failed to connect to backend server." />
+      );
+
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveAttribute('aria-live', 'assertive');
+      expect(alert).toHaveTextContent(
+        'Failed to connect to backend server.'
+      );
+    });
+
+    it('renders a keyboard-operable Retry button when onRetry is provided', () => {
+      const onRetryMock = jest.fn();
+      render(
+        <ReputationPageContent fetchState="error" onRetry={onRetryMock} />
+      );
+
+      const retryButton = screen.getByRole('button', {
+        name: /retry loading reputation/i,
+      });
+      expect(retryButton).toBeInTheDocument();
+      expect(retryButton.tagName).toBe('BUTTON');
+      expect(retryButton).toHaveAttribute('type', 'button');
+    });
+
+    it('invokes onRetry handler when Retry button is clicked', () => {
+      const onRetryMock = jest.fn();
+      render(
+        <ReputationPageContent fetchState="error" onRetry={onRetryMock} />
+      );
+
+      const retryButton = screen.getByRole('button', {
+        name: /retry loading reputation/i,
+      });
+      fireEvent.click(retryButton);
+
+      expect(onRetryMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('State Exclusivity & Transitions', () => {
+    it('ensures loading state takes precedence when isLoading is true', () => {
+      const data = { score: 85, history: [] };
+      render(<ReputationPageContent isLoading={true} reputationData={data} />);
+
+      expect(screen.getByTestId('reputation-loading')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-profile')
+      ).not.toBeInTheDocument();
+    });
+
+    it('ensures error state takes precedence over empty state', () => {
+      render(
+        <ReputationPageContent isError={true} reputationData={null} />
+      );
+
+      expect(screen.getByTestId('reputation-error')).toBeInTheDocument();
+      expect(screen.queryByText('No reputation yet')).not.toBeInTheDocument();
+    });
+
+    it('honors explicit fetchState over property flags', () => {
+      render(
+        <ReputationPageContent fetchState="error" isLoading={true} />
+      );
+
+      expect(screen.getByTestId('reputation-error')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('reputation-loading')
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('Accessibility', () => {
-    it('maintains proper heading hierarchy with h1 for page title', () => {
-      render(<ReputationPageContent />);
+    it('maintains proper heading hierarchy with h1 for page title across states', () => {
+      const { rerender } = render(
+        <ReputationPageContent fetchState="loading" />
+      );
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Reputation'
+      );
 
-      const mainHeading = screen.getByRole('heading', { level: 1 });
-      expect(mainHeading).toHaveTextContent('Reputation');
+      rerender(
+        <ReputationPageContent fetchState="error" errorMessage="Error" />
+      );
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Reputation'
+      );
+
+      rerender(<ReputationPageContent fetchState="empty" />);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Reputation'
+      );
     });
 
-    it('does not render duplicate primary headings', () => {
-      render(<ReputationPageContent />);
+    it('does not render duplicate primary headings in error or loading state', () => {
+      render(<ReputationPageContent fetchState="error" />);
 
       const h1Headings = screen.getAllByRole('heading', { level: 1 });
       expect(h1Headings).toHaveLength(1);
     });
 
-    it('contains main element for semantic structure', () => {
-      const { container } = render(<ReputationPageContent />);
+    it('contains main element for semantic structure in all states', () => {
+      const { container } = render(
+        <ReputationPageContent fetchState="error" />
+      );
 
       const mainElement = container.querySelector('main');
       expect(mainElement).toBeInTheDocument();
@@ -171,7 +395,9 @@ describe('ReputationPageContent', () => {
       const data = { score: 50 };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Expert');
+      expect(screen.getByTestId('reputation-level')).toHaveTextContent(
+        'Expert'
+      );
     });
 
     it('applies default name when not provided', () => {
@@ -185,7 +411,9 @@ describe('ReputationPageContent', () => {
       const data = { score: 50 };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent('0');
+      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent(
+        '0'
+      );
     });
   });
 
@@ -209,14 +437,29 @@ describe('ReputationPageContent', () => {
       const data = { score: 75, history };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent('5');
+      expect(screen.getByTestId('reputation-history-count')).toHaveTextContent(
+        '5'
+      );
     });
 
     it('renders correctly with custom userName', () => {
       const data = { score: 50 };
-      render(<ReputationPageContent reputationData={data} userName="CustomName" />);
+      render(
+        <ReputationPageContent
+          reputationData={data}
+          userName="CustomName"
+        />
+      );
 
-      expect(screen.getByTestId('reputation-name')).toHaveTextContent('CustomName');
+      expect(screen.getByTestId('reputation-name')).toHaveTextContent(
+        'CustomName'
+      );
+    });
+
+    it('renders ReputationPage default export without crashing', () => {
+      render(<ReputationPage />);
+      expect(screen.getAllByText('No reputation yet').length).toBeGreaterThan(0);
     });
   });
 });
+
