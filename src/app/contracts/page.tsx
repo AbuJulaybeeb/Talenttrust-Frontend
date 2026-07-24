@@ -9,20 +9,27 @@ import ContractStatusFilter, {
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 
-const PAGE_SIZE = 5;
-
 const ContractsPage: React.FC = () => {
   // Initialise from localStorage on first render; subsequent saves trigger
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
 
-  /** Client-side filtered contracts derived from the active status filter. */
+  /** Client-side filtered contracts derived from the search and status filters. */
   const filteredContracts = useMemo(() => {
-    if (statusFilter === 'All') return contracts;
-    return contracts.filter((c) => c.status === statusFilter);
-  }, [contracts, statusFilter]);
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return contracts.filter((contract) => {
+      const matchesSearch =
+        normalizedSearch === '' ||
+        contract.contractName.toLowerCase().includes(normalizedSearch);
+      const matchesStatus = statusFilter === 'All' || contract.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [contracts, searchTerm, statusFilter]);
 
   /**
    * Opens the contract creation form modal.
@@ -48,18 +55,9 @@ const ContractsPage: React.FC = () => {
     setShowForm(false);
   }, []);
 
-  /**
-   * Loads the next batch of contracts.
-   */
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredContracts.length));
-  }, [filteredContracts.length]);
-
-  const hasMore = visibleCount < filteredContracts.length;
-
   return (
     <main className="min-h-screen p-8">
-      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold mb-6 focus-visible:outline-none">
+      <h1 className="text-2xl font-bold mb-6">
         Contracts
       </h1>
 
@@ -76,7 +74,7 @@ const ContractsPage: React.FC = () => {
       {!showForm && contracts.length > 0 && (
         <>
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex flex-1 flex-col sm:flex-row gap-4">
+            <div className="flex-1">
               <div className="relative flex-1">
                 <label htmlFor="search-contracts" className="sr-only">Search contracts</label>
                 <input
@@ -87,20 +85,6 @@ const ContractsPage: React.FC = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
-              <div className="w-full sm:w-48">
-                <label htmlFor="filter-status" className="sr-only">Filter by status</label>
-                <select
-                  id="filter-status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Active">Active</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Completed">Completed</option>
-                </select>
               </div>
             </div>
             <button

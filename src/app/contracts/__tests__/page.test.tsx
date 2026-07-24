@@ -442,7 +442,7 @@ describe('ContractsPage', () => {
     it('opens contract creation form with keyboard Enter on the action button', async () => {
       const user = userEvent.setup();
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       const createButton = screen.getByRole('button', { name: /create contract/i });
       createButton.focus();
@@ -687,12 +687,77 @@ describe('ContractStatusFilter integration', () => {
 
   it('filter does not appear while the creation form is open', () => {
     mockListContracts.mockReturnValue(MIXED_CONTRACTS);
-    render(<ContractsPage />);
+    renderWithProviders(<ContractsPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
     expect(
       screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
     ).not.toBeInTheDocument();
+  });
+});
+// Issue #506: drive status chips through the rendered Contracts page.
+describe('contract status chip behavior', () => {
+  const contracts = [
+    { contractName: 'Active Alpha', parties: [], totalValue: 1000, currency: 'USD', status: 'Active' as const, createdAt: 'Jan 1, 2025', milestoneCount: 1 },
+    { contractName: 'Pending Beta', parties: [], totalValue: 2000, currency: 'USD', status: 'Pending' as const, createdAt: 'Jan 2, 2025', milestoneCount: 1 },
+    { contractName: 'Completed Gamma', parties: [], totalValue: 3000, currency: 'USD', status: 'Completed' as const, createdAt: 'Jan 3, 2025', milestoneCount: 1 },
+    { contractName: 'Disputed Delta', parties: [], totalValue: 4000, currency: 'USD', status: 'Disputed' as const, createdAt: 'Jan 4, 2025', milestoneCount: 1 },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockListContracts.mockReturnValue(contracts);
+    mockIsValidStellarAddress.mockReturnValue(true);
+  });
+
+  it.each([
+    ['Active', 'Active Alpha'],
+    ['Pending', 'Pending Beta'],
+    ['Completed', 'Completed Gamma'],
+    ['Disputed', 'Disputed Delta'],
+  ] as const)('%s filters the list and exposes selected state', (status, visibleContract) => {
+    render(<ContractsPage />);
+
+    const chip = screen.getByRole('radio', { name: status });
+    fireEvent.click(chip);
+
+    expect(chip).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked();
+    contracts.forEach(({ contractName }) => {
+      if (contractName === visibleContract) {
+        expect(screen.getByText(contractName)).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText(contractName)).not.toBeInTheDocument();
+      }
+    });
+  });
+
+  it('shows a deterministic empty result for a status with no contracts', () => {
+    render(<ContractsPage />);
+
+    const paidChip = screen.getByRole('radio', { name: 'Paid' });
+    fireEvent.click(paidChip);
+
+    expect(paidChip).toBeChecked();
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+  });
+
+  it('combines status with search and All clears only the status filter', () => {
+    render(<ContractsPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search contracts' }), {
+      target: { value: 'alpha' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Pending' }));
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+
+    const allChip = screen.getByRole('radio', { name: 'All' });
+    fireEvent.click(allChip);
+
+    expect(allChip).toBeChecked();
+    expect(screen.getByText('Active Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Pending Beta')).not.toBeInTheDocument();
   });
 });
