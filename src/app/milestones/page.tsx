@@ -57,6 +57,65 @@ export const SAMPLE_MILESTONES: Milestone[] = [
 
 const VALID_STATUSES: MilestoneStatusFilter[] = ['All', 'Pending', 'Completed', 'Paid', 'Disputed'];
 
+export type MilestoneSortOption =
+  | 'dueDate-asc'
+  | 'dueDate-desc'
+  | 'payout-asc'
+  | 'payout-desc'
+  | 'title-asc'
+  | 'title-desc';
+
+export interface MilestonePreferences {
+  filter: MilestoneStatusFilter;
+  sort: MilestoneSortOption;
+}
+
+export const PREFERENCES_STORAGE_KEY = 'talenttrust-milestones-preferences';
+
+export const DEFAULT_PREFERENCES: MilestonePreferences = {
+  filter: 'All',
+  sort: 'dueDate-asc',
+};
+
+const VALID_SORT_OPTIONS: MilestoneSortOption[] = [
+  'dueDate-asc',
+  'dueDate-desc',
+  'payout-asc',
+  'payout-desc',
+  'title-asc',
+  'title-desc',
+];
+
+const VALID_ALL_STATUSES: MilestoneStatusFilter[] = [
+  'All',
+  'Active',
+  'Pending',
+  'Completed',
+  'Paid',
+  'Disputed',
+];
+
+function getValidPreferences(storedStr: string | null): MilestonePreferences {
+  if (!storedStr) {
+    return DEFAULT_PREFERENCES;
+  }
+  try {
+    const parsed = JSON.parse(storedStr);
+    if (parsed && typeof parsed === 'object') {
+      const filter = VALID_ALL_STATUSES.includes(parsed.filter)
+        ? parsed.filter
+        : DEFAULT_PREFERENCES.filter;
+      const sort = VALID_SORT_OPTIONS.includes(parsed.sort)
+        ? parsed.sort
+        : DEFAULT_PREFERENCES.sort;
+      return { filter, sort };
+    }
+  } catch {
+    // Ignore and fallback
+  }
+  return DEFAULT_PREFERENCES;
+}
+
 function getValidStatus(param: string | null): MilestoneStatusFilter {
   return param && (VALID_STATUSES as string[]).includes(param)
     ? (param as MilestoneStatusFilter)
@@ -72,6 +131,7 @@ const MilestonesContent: React.FC = () => {
 
   const initialStatus = getValidStatus(searchParams.get('status'));
   const [statusFilter, setStatusFilter] = useState<MilestoneStatusFilter>(initialStatus);
+  const [sortBy, setSortBy] = useState<MilestoneSortOption>(DEFAULT_PREFERENCES.sort);
   const [showForm, setShowForm] = useState(false);
 
   // Sync state if searchParams change externally (e.g. back/forward navigation)
@@ -92,6 +152,20 @@ const MilestonesContent: React.FC = () => {
 
   // Rehydrate from localStorage after the client mounts to avoid SSR mismatches.
   useEffect(() => {
+    // Load preferences
+    try {
+      const stored = getItem(PREFERENCES_STORAGE_KEY);
+      const prefs = getValidPreferences(stored);
+      const urlStatus = searchParams.get('status');
+      const validUrlStatus = urlStatus ? getValidStatus(urlStatus) : null;
+
+      setStatusFilter(validUrlStatus || prefs.filter);
+      setSortBy(prefs.sort);
+    } catch {
+      setStatusFilter('All');
+      setSortBy('dueDate-asc');
+    }
+
     const persisted = listMilestones();
     if (persisted.length > 0) {
       setMilestones(persisted);
@@ -105,6 +179,31 @@ const MilestonesContent: React.FC = () => {
       }
       setMilestones(SAMPLE_MILESTONES);
     }
+  }, []);
+
+  // Persist preferences to storage on state change
+  const isMounted = useRef(false);
+  useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true;
+      return;
+    }
+    try {
+      setItem(
+        PREFERENCES_STORAGE_KEY,
+        JSON.stringify({ filter: statusFilter, sort: sortBy })
+      );
+    } catch {
+      // safe fallback
+    }
+  }, [statusFilter, sortBy]);
+
+  const handleFilterChange = useCallback((newFilter: MilestoneStatusFilter) => {
+    setStatusFilter(newFilter);
+  }, []);
+
+  const handleSortChange = useCallback((newSort: MilestoneSortOption) => {
+    setSortBy(newSort);
   }, []);
 
   const handleDismissSampleBanner = useCallback(() => {
@@ -128,6 +227,34 @@ const MilestonesContent: React.FC = () => {
     if (statusFilter === 'All') return displayMilestones;
     return displayMilestones.filter((m) => m.status === statusFilter);
   }, [displayMilestones, statusFilter]);
+
+  const sortedAndFiltered = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'dueDate-asc') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      }
+      if (sortBy === 'dueDate-desc') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return b.dueDate.localeCompare(a.dueDate);
+      }
+      if (sortBy === 'payout-asc') {
+        return a.payout - b.payout;
+      }
+      if (sortBy === 'payout-desc') {
+        return b.payout - a.payout;
+      }
+      if (sortBy === 'title-asc') {
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === 'title-desc') {
+        return b.title.localeCompare(a.title);
+      }
+      return 0;
+    });
+  }, [filtered, sortBy]);
 
   const handleAddMilestone = useCallback(() => {
     setShowForm(true);
@@ -196,12 +323,32 @@ const MilestonesContent: React.FC = () => {
         />
       ) : (
         <>
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <MilestoneFilter
-              selected={statusFilter}
-              onChange={setStatusFilter}
-              resultCount={filtered.length}
-            />
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <MilestoneFilter
+                selected={statusFilter}
+                onChange={handleFilterChange}
+                resultCount={filtered.length}
+              />
+              <div className="flex flex-col mb-6">
+                <label htmlFor="sort-milestones" className="text-sm font-medium text-slate-700 mb-3">
+                  Sort by
+                </label>
+                <select
+                  id="sort-milestones"
+                  value={sortBy}
+                  onChange={(e) => handleSortChange(e.target.value as MilestoneSortOption)}
+                  className="rounded-2xl border border-slate-200 px-4 py-1.5 text-sm text-slate-900 bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="dueDate-asc">Due Date (Earliest)</option>
+                  <option value="dueDate-desc">Due Date (Latest)</option>
+                  <option value="payout-asc">Payout (Low to High)</option>
+                  <option value="payout-desc">Payout (High to Low)</option>
+                  <option value="title-asc">Title (A to Z)</option>
+                  <option value="title-desc">Title (Z to A)</option>
+                </select>
+              </div>
+            </div>
             <button
               type="button"
               onClick={handleAddMilestone}
@@ -211,7 +358,7 @@ const MilestonesContent: React.FC = () => {
             </button>
           </div>
 
-          {filtered.length === 0 ? (
+          {sortedAndFiltered.length === 0 ? (
             <EmptyState
               illustration="milestones"
               title="No milestones match this filter"
@@ -220,7 +367,7 @@ const MilestonesContent: React.FC = () => {
               onAction={handleAddMilestone}
             />
           ) : (
-            <MilestonesList milestones={filtered} />
+            <MilestonesList milestones={sortedAndFiltered} />
           )}
         </>
       )}

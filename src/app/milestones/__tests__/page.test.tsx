@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MilestonesPage, { SAMPLE_MILESTONES, SAMPLE_DISMISSED_KEY } from '../page';
 import { listMilestones, saveMilestone } from '@/lib/repository';
@@ -20,10 +20,6 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), prefetch: jest.fn() }),
 }));
 
-// ---------------------------------------------------------------------------
-// Repository mocks
-// ---------------------------------------------------------------------------
-
 jest.mock('@/lib/repository', () => ({
   listMilestones: jest.fn(),
   saveMilestone: jest.fn(),
@@ -31,6 +27,19 @@ jest.mock('@/lib/repository', () => ({
 
 const mockedListMilestones = jest.mocked(listMilestones);
 const mockedSaveMilestone = jest.mocked(saveMilestone);
+
+jest.mock('@/lib/safeStorage', () => {
+  const actual = jest.requireActual('@/lib/safeStorage');
+  return {
+    ...actual,
+    getItem: jest.fn((key) => actual.getItem(key)),
+    setItem: jest.fn((key, value) => actual.setItem(key, value)),
+  };
+});
+
+import { getItem as mockGetItem, setItem as mockSetItem } from '@/lib/safeStorage';
+const mockedGetItem = jest.mocked(mockGetItem);
+const mockedSetItem = jest.mocked(mockSetItem);
 
 // ---------------------------------------------------------------------------
 // Fixture data
@@ -63,6 +72,8 @@ const mixedMilestones: Milestone[] = [
   { id: 'm-5', title: 'Under Dispute',    status: 'Disputed',  payout: 1500, currency: 'USD', dueDate: '2026-07-20' },
 ];
 
+import { safeStorage } from '@/lib/safeStorage';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -80,6 +91,12 @@ async function renderPage() {
 beforeEach(() => {
   mockedListMilestones.mockReturnValue([]);
   mockedSaveMilestone.mockImplementation(() => {});
+  mockedGetItem.mockReset();
+  mockedSetItem.mockReset();
+  const actualSafeStorage = jest.requireActual('@/lib/safeStorage');
+  mockedGetItem.mockImplementation((key) => actualSafeStorage.getItem(key));
+  mockedSetItem.mockImplementation((key, val) => actualSafeStorage.setItem(key, val));
+  safeStorage.resetCache();
   window.localStorage.clear();
   mockSearchParams.get.mockReturnValue(null);
   mockSearchParams.toString.mockReturnValue('');
@@ -88,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.clearAllMocks();
+  safeStorage.resetCache();
   window.localStorage.clear();
 });
 
@@ -676,5 +694,225 @@ describe('exported constants', () => {
   it('SAMPLE_MILESTONES covers multiple statuses', () => {
     const statuses = new Set(SAMPLE_MILESTONES.map((m) => m.status));
     expect(statuses.size).toBeGreaterThan(1);
+  });
+});
+
+// ===========================================================================
+// 10. Filter and sort preference persistence tests
+// ===========================================================================
+
+import { PREFERENCES_STORAGE_KEY } from '../page';
+
+describe('MilestonesPage — preference persistence', () => {
+  beforeEach(() => {
+    mockedListMilestones.mockReturnValue(mixedMilestones);
+  });
+
+  it('Restore on mount: stored filter/sort values are applied when the component mounts', async () => {
+    // Save preferences beforehand
+    safeStorage.setItem(
+      PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ filter: 'Completed', sort: 'payout-desc' })
+    );
+
+    await renderPage();
+
+    // Check Completed radio is checked
+    expect(screen.getByRole('radio', { name: 'Completed' })).toBeChecked();
+    // Check select has payout-desc selected
+    const select = screen.getByLabelText('Sort by') as HTMLSelectElement;
+    expect(select.value).toBe('payout-desc');
+
+    // Milestones should be filtered to Completed and sorted by payout-desc
+    // Completed is: Done Milestone ($3,000)
+    expect(screen.getByText('Done Milestone')).toBeInTheDocument();
+    expect(screen.queryByText('Active Work')).not.toBeInTheDocument();
+  });
+
+  it('Invalid value falls back: corrupt or malformed stored value results in default filter/sort, no crash', async () => {
+    // Save invalid preference string
+    safeStorage.setItem(PREFERENCES_STORAGE_KEY, '{invalid-json');
+
+    await renderPage();
+
+    // Should not crash and use default values
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    const select = screen.getByLabelText('Sort by') as HTMLSelectElement;
+    expect(select.value).toBe('dueDate-asc');
+  });
+
+  it('Unknown filter id: a stored filter id that doesn\'t match any known filter falls back to default', async () => {
+    // Save unknown filter
+    safeStorage.setItem(
+      PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ filter: 'InvalidFilterName', sort: 'title-desc' })
+    );
+
+    await renderPage();
+
+    // Should fall back to 'All' filter, but keep the valid 'title-desc' sort
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    const select = screen.getByLabelText('Sort by') as HTMLSelectElement;
+    expect(select.value).toBe('title-desc');
+  });
+
+  it('Change persists: changing the filter or sort writes the new value to storage', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    // Set filter to Paid
+    await user.click(screen.getByRole('radio', { name: 'Paid' }));
+
+    // Set sort to payout-asc
+    const select = screen.getByLabelText('Sort by');
+    await user.selectOptions(select, 'payout-asc');
+
+    // Verify stored preference
+    const stored = safeStorage.getItem(PREFERENCES_STORAGE_KEY);
+    expect(stored).toBeDefined();
+    const prefs = JSON.parse(stored!);
+    expect(prefs.filter).toBe('Paid');
+    expect(prefs.sort).toBe('payout-asc');
+  });
+
+  it('Verifies sorting: dueDate-desc, payout-asc, payout-desc, title-asc, title-desc, and same titles fallback', async () => {
+    const user = userEvent.setup();
+    // Inject two milestones with the same title to cover sorting fallback (return 0)
+    mockedListMilestones.mockReturnValue([
+      ...mixedMilestones,
+      { id: 'm-6', title: 'Active Work', status: 'Active', payout: 1000, currency: 'USD', dueDate: '2026-08-01' }
+    ]);
+    await renderPage();
+
+    const select = screen.getByLabelText('Sort by') as HTMLSelectElement;
+
+    // Test title-asc
+    await user.selectOptions(select, 'title-asc');
+    let articles = screen.getAllByRole('article');
+    let titles = articles.map(art => art.querySelector('p')?.textContent);
+    expect(titles[0]).toBe('Active Work');
+    expect(titles[1]).toBe('Active Work'); // duplicates sort stable/fallback
+
+    // Test title-desc
+    await user.selectOptions(select, 'title-desc');
+    articles = screen.getAllByRole('article');
+    titles = articles.map(art => art.querySelector('p')?.textContent);
+    expect(titles[0]).toBe('Under Dispute');
+
+    // Test payout-asc
+    await user.selectOptions(select, 'payout-asc');
+    articles = screen.getAllByRole('article');
+    titles = articles.map(art => art.querySelector('p')?.textContent);
+    // lowest payout first: Active Work ($1000)
+    expect(titles[0]).toBe('Active Work');
+
+    // Test payout-desc
+    await user.selectOptions(select, 'payout-desc');
+    articles = screen.getAllByRole('article');
+    titles = articles.map(art => art.querySelector('p')?.textContent);
+    expect(titles[0]).toBe('Settled Payment');
+
+    // Test dueDate-desc
+    await user.selectOptions(select, 'dueDate-desc');
+    articles = screen.getAllByRole('article');
+    titles = articles.map(art => art.querySelector('p')?.textContent);
+    expect(titles[0]).toBe('Pending Task');
+  });
+
+  it('Verifies form interactions: submits a new milestone and cancels the form', async () => {
+    await renderPage();
+
+    // Click Add Milestone to show form
+    const addBtns = screen.getAllByRole('button', { name: /add milestone/i });
+    fireEvent.click(addBtns[0]);
+
+    // Wait for the form modal to appear
+    await screen.findByRole('dialog');
+
+    // Verify form cancel
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
+    fireEvent.click(cancelBtn);
+    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+
+    // Open again to submit
+    fireEvent.click(screen.getAllByRole('button', { name: /add milestone/i })[0]);
+    await screen.findByRole('dialog');
+
+    // Fill form fields
+    const titleInput = screen.getByLabelText(/^title/i);
+    fireEvent.change(titleInput, { target: { value: 'New Custom Milestone' } });
+
+    const payoutInput = screen.getByLabelText(/payout amount/i);
+    fireEvent.change(payoutInput, { target: { value: '5500' } });
+
+    // Submit form
+    // Note: The form submit button text is "Add Milestone"
+    const dialog = screen.getByRole('dialog');
+    const submitBtn = within(dialog).getByRole('button', { name: 'Add Milestone' });
+    fireEvent.click(submitBtn);
+
+    // Verify list update and form closure
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+      expect(mockedSaveMilestone).toHaveBeenCalled();
+    });
+  });
+
+  it('Verifies safeStorage.getItem throwing errors is handled gracefully', async () => {
+    // Force throwing error on getItem specifically for both keys separately or together
+    mockedGetItem.mockImplementation((key) => {
+      throw new Error(`Forced Storage Error for ${key}`);
+    });
+
+    await renderPage();
+
+    // Should render correctly with default values ('All' filter)
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+  });
+
+  it('Verifies safeStorage.getItem throwing error on SAMPLE_DISMISSED_KEY goes to catch block', async () => {
+    mockedListMilestones.mockReturnValue([]);
+    mockedGetItem.mockImplementation((key) => {
+      if (key === SAMPLE_DISMISSED_KEY) {
+        throw new Error('Forced Dismissed Error');
+      }
+      return null;
+    });
+
+    await renderPage();
+    // Banner should be hidden by default in the catch block fallback
+    expect(screen.queryByTestId('sample-data-banner')).not.toBeInTheDocument();
+  });
+
+  it('Verifies invalid sort option fallback triggers return 0', async () => {
+    await renderPage();
+    // Select element exists, we can get it and trigger change with invalid value
+    const select = screen.getByLabelText('Sort by');
+    fireEvent.change(select, { target: { value: 'invalid-sort-option' } });
+
+    // Should not crash and should render list
+    expect(screen.getByText('Active Work')).toBeInTheDocument();
+  });
+
+  it('Verifies dismissing sample data banner via button click', async () => {
+    // Force empty list milestones to show sample banner
+    mockedListMilestones.mockReturnValue([]);
+    // Restore normal mock implementation
+    const actualSafeStorage = jest.requireActual('@/lib/safeStorage');
+    mockedGetItem.mockImplementation((key) => actualSafeStorage.getItem(key));
+
+    await renderPage();
+
+    // Verify sample banner is shown
+    expect(screen.getByTestId('sample-data-banner')).toBeInTheDocument();
+
+    // Click "Start from scratch"
+    const dismissBtn = screen.getByTestId('start-from-scratch-btn');
+    fireEvent.click(dismissBtn);
+
+    // Banner should be hidden
+    await waitFor(() => {
+      expect(screen.queryByTestId('sample-data-banner')).not.toBeInTheDocument();
+    });
   });
 });
