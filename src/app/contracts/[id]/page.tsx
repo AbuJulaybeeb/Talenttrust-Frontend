@@ -50,6 +50,41 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
   const { showError, showSuccess } = useToast();
 
   /**
+   * Copies the current contract page URL to the clipboard with fallback for non-secure contexts.
+   */
+  const handleCopyLink = useCallback(async () => {
+    const url = window.location.href;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        // Fallback for non-secure HTTP contexts or older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+
+      showSuccess({
+        title: 'Link copied',
+        description: 'Contract link copied to clipboard.',
+      });
+    } catch {
+      showError({
+        title: 'Failed to copy',
+        description: 'Could not copy contract link to clipboard.',
+      });
+    }
+  }, [showSuccess, showError]);
+
+  /**
    * Maps the resolved contract detail shape into the repository contract shape.
    *
    * The repository stores summary-friendly contract records, so the detail page
@@ -219,12 +254,22 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
             />
             <h1 className="mt-2 text-3xl font-semibold text-slate-900">Contract #{id}</h1>
           </div>
-          <Link
-            href="/contracts"
-            className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400"
-          >
-            Back to contracts
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              aria-label="Copy contract link"
+              className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+            >
+              Copy Link
+            </button>
+            <Link
+              href="/contracts"
+              className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400"
+            >
+              Back to contracts
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
