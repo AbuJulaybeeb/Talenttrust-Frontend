@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useRef } from 'react';
+import React, { memo, useEffect, useId, useRef } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 
 /** Props for the ConfirmDialog component */
@@ -26,6 +26,10 @@ export interface ConfirmDialogProps {
 /**
  * Accessible confirmation dialog.
  *
+ * Wrapped in `React.memo` so that it only re-renders when its own props
+ * change. Callers (e.g. ActionPanel) that memoize the props they pass in
+ * can therefore avoid redundant re-renders when unrelated state changes.
+ *
  * - Focus is moved to the cancel button when opened.
  * - Focus is trapped within the dialog.
  * - Escape key triggers cancel.
@@ -34,7 +38,7 @@ export interface ConfirmDialogProps {
  * - Supports tone="destructive" (role="alertdialog") or default (role="dialog").
  * - Restricts background content with inert / aria-hidden while open.
  */
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+const ConfirmDialogBase: React.FC<ConfirmDialogProps> = ({
   isOpen,
   title,
   description,
@@ -158,3 +162,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     </div>
   );
 };
+
+/**
+ * Memoized export — React skips re-rendering this component when its props
+ * are referentially equal to the previous render. Callers that derive prop
+ * values with `useMemo` / `useCallback` benefit from this directly.
+ */
+export const ConfirmDialog = memo(ConfirmDialogBase);
+ConfirmDialog.displayName = 'ConfirmDialog';

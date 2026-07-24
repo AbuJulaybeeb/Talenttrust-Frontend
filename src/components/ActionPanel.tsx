@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useToast } from '@/components/toast/toast-provider';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -113,7 +113,12 @@ const ActionPanel = ({
   disabledReasons,
   disputeFlow: _disputeFlow = 'inline',
 }: ActionPanelProps) => {
-  const actions = getActionButtons(status);
+  /**
+   * Derive the list of visible action buttons from `status`. Wrapped in
+   * `useMemo` so the array is only recomputed when `status` changes, not on
+   * every render triggered by unrelated state (e.g. dispute form input).
+   */
+  const actions = useMemo(() => getActionButtons(status), [status]);
   const { address } = useWallet();
   const { showSuccess } = useToast();
   const isWalletConnected = !!address;
@@ -138,15 +143,18 @@ const ActionPanel = ({
    */
   const triggerElementRef = useRef<HTMLButtonElement | null>(null);
 
-  const handleOpenConfirm = (
-    action: Exclude<ConfirmAction, null>,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    triggerElementRef.current = event.currentTarget;
-    setConfirmAction(action);
-  };
+  const handleOpenConfirm = useCallback(
+    (
+      action: Exclude<ConfirmAction, null>,
+      event: React.MouseEvent<HTMLButtonElement>,
+    ) => {
+      triggerElementRef.current = event.currentTarget;
+      setConfirmAction(action);
+    },
+    [],
+  );
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     if (confirmAction === 'submit') {
       onSubmitMilestone?.();
       showSuccess({ title: 'Milestone submitted' });
@@ -157,12 +165,12 @@ const ActionPanel = ({
     }
     setConfirmAction(null);
     triggerElementRef.current?.focus();
-  };
+  }, [confirmAction, onDispute, onReleaseFunds, onSubmitMilestone, showSuccess]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setConfirmAction(null);
     triggerElementRef.current?.focus();
-  };
+  }, []);
 
   // Inline dispute form state.
   const [disputeFormOpen, setDisputeFormOpen] = useState(false);
@@ -175,12 +183,12 @@ const ActionPanel = ({
   const disputeTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   /** Opens the inline dispute form and moves focus to the textarea. */
-  const handleOpenDisputeForm = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleOpenDisputeForm = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     triggerElementRef.current = event.currentTarget;
     setDisputeReason('');
     setDisputeReasonError('');
     setDisputeFormOpen(true);
-  };
+  }, []);
 
   const previousDisputeFormOpenRef = useRef(false);
 
@@ -246,13 +254,13 @@ const ActionPanel = ({
   }, [confirmAction]);
 
   /** Closes the inline form and returns focus to the button that opened it. */
-  const closeDisputeForm = () => {
+  const closeDisputeForm = useCallback(() => {
     setDisputeFormOpen(false);
     setDisputeReason('');
     setDisputeReasonError('');
-  };
+  }, []);
 
-  const handleDisputeReasonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleDisputeReasonChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     // Enforce hard max-length in the handler as a safety net in addition to
     // the maxLength attribute; silently truncate to avoid confusing the user
@@ -264,7 +272,7 @@ const ActionPanel = ({
     if (disputeReasonError && value.trim().length > 0) {
       setDisputeReasonError('');
     }
-  };
+  }, [disputeReasonError]);
 
   /**
    * Validates and submits the dispute reason.
@@ -277,7 +285,7 @@ const ActionPanel = ({
    * On success the trimmed reason is forwarded to `onDispute` and the form
    * is closed; focus returns to the originating "Dispute" button.
    */
-  const handleDisputeSubmit = (e: React.FormEvent) => {
+  const handleDisputeSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isWalletConnected) {
@@ -295,10 +303,33 @@ const ActionPanel = ({
 
     onDispute?.(disputeReason.trim());
     closeDisputeForm();
-  };
+  }, [closeDisputeForm, disputeReason, isWalletConnected, onDispute]);
 
   const remainingChars = DISPUTE_REASON_MAX_LENGTH - disputeReason.length;
   const isOverLimit = disputeReason.length >= DISPUTE_REASON_MAX_LENGTH;
+
+  /**
+   * Memoize the props passed to `ConfirmDialog` so that the memo-wrapped
+   * component only re-renders when `confirmAction` actually changes —
+   * not on every keystroke in the dispute textarea or other unrelated
+   * state updates inside `ActionPanel`.
+   */
+  const dialogProps = useMemo(() => {
+    const copy =
+      confirmAction && confirmAction in CONFIRM_COPY
+        ? CONFIRM_COPY[confirmAction as keyof typeof CONFIRM_COPY]
+        : null;
+    return {
+      isOpen: confirmAction !== null,
+      title: copy?.title ?? '',
+      description: copy?.description ?? '',
+      confirmLabel: copy?.confirmLabel ?? 'Confirm',
+      cancelLabel: 'Cancel' as const,
+      tone: (confirmAction === 'release' || confirmAction === 'dispute'
+        ? 'destructive'
+        : 'default') as 'destructive' | 'default',
+    };
+  }, [confirmAction]);
 
   return (
     <aside
@@ -512,7 +543,7 @@ const ActionPanel = ({
         {actions.includes('View Summary') && (
           <button
             type="button"
-            onClick={() => onViewSummary?.()}
+            onClick={onViewSummary}
             disabled={isLoading || !!disabledReasons?.viewSummary}
             aria-label="View contract summary details"
             aria-describedby={describedBy(describedById('viewSummary'))}
@@ -526,12 +557,7 @@ const ActionPanel = ({
       {/* Confirmation Dialog: used for Submit Milestone and Release Funds only.
           Dispute is handled by the inline form above. */}
       <ConfirmDialog
-        isOpen={confirmAction !== null}
-        title={confirmAction && confirmAction in CONFIRM_COPY ? CONFIRM_COPY[confirmAction as keyof typeof CONFIRM_COPY].title : ''}
-        description={confirmAction && confirmAction in CONFIRM_COPY ? CONFIRM_COPY[confirmAction as keyof typeof CONFIRM_COPY].description : ''}
-        confirmLabel={confirmAction && confirmAction in CONFIRM_COPY ? CONFIRM_COPY[confirmAction as keyof typeof CONFIRM_COPY].confirmLabel : 'Confirm'}
-        cancelLabel="Cancel"
-        tone={confirmAction === 'release' || confirmAction === 'dispute' ? 'destructive' : 'default'}
+        {...dialogProps}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, FormEvent, useRef } from 'react';
+import React, { memo, useState, useCallback, FormEvent, useRef } from 'react';
 import { FormField } from '@/components/FormField';
 import { ErrorSummary } from '@/components/ErrorSummary';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
@@ -58,7 +58,7 @@ export interface MilestoneCreationFormProps {
  * />
  * ```
  */
-export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
+const MilestoneCreationFormBase: React.FC<MilestoneCreationFormProps> = ({
   onSubmit,
   onCancel,
   contractId,
@@ -271,3 +271,13 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
     </div>
   );
 };
+
+/**
+ * Memoized export — React skips re-rendering this component when its props
+ * are referentially equal to the previous render. Since the form is
+ * always controlled by its parent and has stable callback refs, wrapping
+ * in `memo` prevents redundant re-renders driven by unrelated state
+ * updates in ancestor components (e.g. a parent that also manages a list).
+ */
+export const MilestoneCreationForm = memo(MilestoneCreationFormBase);
+MilestoneCreationForm.displayName = 'MilestoneCreationForm';
