@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import StatusBadge, { StatusType, statusColorMap, statusIconMap } from './StatusBadge';
 import { usePreferences } from '@/lib/preferences';
 import { isDueSoon } from '@/lib/dueSoon';
 import { findCurrencyMismatches, normalizeCurrencyCode } from '@/lib/currencyMismatch';
 import { milestoneStatusTally } from '@/lib/milestoneStatusTally';
+import BackToTop from './BackToTop';
 
 export type Milestone = {
   id: string;
@@ -21,10 +22,78 @@ export type MilestonesListProps = {
   contractCurrency?: string;
 };
 
+export type SortOption = 'dueDate-asc' | 'dueDate-desc' | 'payout-asc' | 'payout-desc';
+
 export const REMINDER_WINDOW_DAYS = 7;
 
+export function filterMilestonesByTitle(milestones: Milestone[], query: string): Milestone[] {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return milestones;
+  }
+
+  return milestones.filter((milestone) => milestone.title.toLowerCase().includes(normalizedQuery));
+}
+
+export function sortMilestones(milestones: Milestone[], sortOption: SortOption): Milestone[] {
+  const sortedMilestones = [...milestones];
+
+  if (sortOption === 'payout-asc') {
+    sortedMilestones.sort((a, b) => a.payout - b.payout);
+    return sortedMilestones;
+  }
+
+  if (sortOption === 'payout-desc') {
+    sortedMilestones.sort((a, b) => b.payout - a.payout);
+    return sortedMilestones;
+  }
+
+  if (sortOption === 'dueDate-desc') {
+    sortedMilestones.sort((a, b) => {
+      const aValue = getDueDateSortValue(a.dueDate);
+      const bValue = getDueDateSortValue(b.dueDate);
+
+      if (aValue === Number.POSITIVE_INFINITY && bValue === Number.POSITIVE_INFINITY) {
+        return a.title.localeCompare(b.title);
+      }
+
+      if (aValue === Number.POSITIVE_INFINITY) {
+        return 1;
+      }
+
+      if (bValue === Number.POSITIVE_INFINITY) {
+        return -1;
+      }
+
+      if (aValue === bValue) {
+        return a.title.localeCompare(b.title);
+      }
+
+      return bValue - aValue;
+    });
+    return sortedMilestones;
+  }
+
+  if (sortOption === 'dueDate-asc') {
+    sortedMilestones.sort((a, b) => getDueDateSortValue(a.dueDate) - getDueDateSortValue(b.dueDate));
+    return sortedMilestones;
+  }
+
+  return milestones;
+}
+
+function getDueDateSortValue(dueDate?: string): number {
+  if (!dueDate) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsedDate = Date.parse(dueDate);
+  return Number.isNaN(parsedDate) ? Number.POSITIVE_INFINITY : parsedDate;
+}
+
 const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesListProps) => {
-  const { formatAmount } = usePreferences();
+  const { formatAmount, preferences } = usePreferences();
   const [isDismissed, setIsDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('dueDate-asc');
@@ -73,6 +142,21 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
     [filteredMilestones, sortOption]
   );
 
+  const listDensity = preferences.listDensity;
+
+  const renderedMilestones = useMemo(
+    () =>
+      displayedMilestones.map((milestone) => (
+        <MilestoneRow
+          key={milestone.id}
+          milestone={milestone}
+          formatAmount={formatAmount}
+          listDensity={listDensity}
+        />
+      )),
+    [displayedMilestones, formatAmount, listDensity],
+  );
+
   const handleDismiss = () => {
     setIsDismissed(true);
     // Programmatically shift focus to the list container to avoid focus loss (WCAG 2.1.1)
@@ -101,7 +185,7 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            aria-controls="milestones-list-region"
+            aria-controls="milestones-list"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -227,15 +311,27 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
         2. Testability in JSDOM where clientHeight/scrollHeight are always zero.
       */}
       <div
+        id="milestones-list"
         ref={listContainerRef}
         role={milestones.length > 0 ? 'region' : undefined}
         aria-labelledby={milestones.length > 0 ? 'milestones-title milestones-count' : undefined}
         tabIndex={milestones.length > 0 ? 0 : undefined}
         className={`mt-6 max-h-[calc(100vh-260px)] overflow-y-auto pr-2 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 ${listDensity === 'compact' ? 'space-y-2' : 'space-y-4'}`}
       >
-          {milestones.map((milestone) => (
-            <MilestoneRow key={milestone.id} milestone={milestone} formatAmount={formatAmount} />
-          ))}
+        {displayedMilestones.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+            <p className="font-medium">No milestones match your search.</p>
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="mt-3 inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              Clear search
+            </button>
+          </div>
+        ) : (
+          renderedMilestones
+        )}
       </div>
 
       {milestones.length > 0 && (
@@ -248,10 +344,10 @@ const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesL
 });
 
 // Memoized row component for individual milestone
-const MilestoneRow = React.memo(({ milestone, formatAmount }: { milestone: Milestone; formatAmount: (amount: number, currency: string) => string; }) => (
+const MilestoneRow = React.memo(({ milestone, formatAmount, listDensity }: { milestone: Milestone; formatAmount: (amount: number, currency: string) => string; listDensity: 'comfortable' | 'compact'; }) => (
   <article
     id={`milestone-${milestone.id}`}
-    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
+    className={`rounded-3xl border border-slate-200 bg-slate-50 ${listDensity === 'compact' ? 'p-3' : 'p-4'} shadow-sm`}
   >
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
