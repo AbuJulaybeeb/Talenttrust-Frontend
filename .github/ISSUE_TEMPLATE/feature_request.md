@@ -6,22 +6,22 @@ labels: enhancement
 assignees: ''
 ---
 
-## Impacted Route / Component
+## Problem Statement
 
-<!-- e.g. /contracts · ContractSummary · MilestonesList -->
-
-## Current Behavior / Reproduction
-
-<!-- Describe the current limitation and how to see it today. -->
-
-## Expected Behavior
-
-<!-- What should happen instead? Focus on the outcome, not the implementation. -->
+<!-- Is your feature request related to a problem? Describe it clearly.
+     e.g. "I find it frustrating when I can't filter milestones by date range because…" -->
 
 ## Proposed Solution
 
-<!-- Optional: a concise implementation idea if you have one. -->
+<!-- A clear, concise description of what you want to happen.
+     Focus on the outcome, not the implementation. -->
+
+## Alternatives Considered
+
+<!-- What other approaches or workarounds have you thought about?
+     Why do you prefer the proposed solution over them? -->
 
 ## Additional Context
 
-<!-- Add mockups, user stories, or links if helpful. -->
+<!-- Add any mockups, wireframes, user stories, or component ideas here.
+     e.g. "This would affect MilestonesList and the /milestones route." -->

@@ -1,21 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import ContractsPage from '../page';
-import ContractsLoading from '../loading';
 import * as repository from '@/lib/repository';
+
 import * as stellarAddress from '@/lib/stellarAddress';
-import { PreferencesProvider } from '@/lib/preferences';
-import { ToastProvider } from '@/components/toast/toast-provider';
 
-
-function renderWithProviders(ui: React.ReactElement) {
-  return render(
-    <PreferencesProvider>
-      <ToastProvider>{ui}</ToastProvider>
-    </PreferencesProvider>
-  );
-}
 
 // Mock dependencies
 jest.mock('@/lib/repository', () => {
@@ -49,20 +38,9 @@ describe('ContractsPage', () => {
     mockIsValidStellarAddress.mockImplementation((addr: string | null | undefined) => addr === VALID_ADDRESS);
   });
 
-  describe('Loading State', () => {
-    it('renders a loading skeleton with accessible status, busy main landmark and list label', () => {
-      render(<ContractsLoading />);
-
-      expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
-      expect(screen.getByRole('status')).toHaveTextContent(/loading contracts/i);
-      expect(screen.getByLabelText('Loading contract list')).toBeInTheDocument();
-      expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    });
-  });
-
   describe('Empty State', () => {
     it('renders EmptyState when contracts array is empty', () => {
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       expect(screen.getByText('No contracts found')).toBeInTheDocument();
       expect(screen.getByText('You haven\'t created any contracts yet. Start by creating your first contract to begin freelancing securely.')).toBeInTheDocument();
@@ -71,7 +49,7 @@ describe('ContractsPage', () => {
 
     it('opens form when create contract button is clicked in empty state', () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -110,7 +88,7 @@ describe('ContractsPage', () => {
       ];
 
       mockListContracts.mockReturnValue(mockContracts);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       expect(screen.getByText('Website Redesign')).toBeInTheDocument();
       expect(screen.getByText('Mobile App Development')).toBeInTheDocument();
@@ -135,7 +113,7 @@ describe('ContractsPage', () => {
       ];
 
       mockListContracts.mockReturnValue(mockContracts);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       expect(screen.queryByText(/no contracts found/i)).not.toBeInTheDocument();
     });
@@ -144,14 +122,14 @@ describe('ContractsPage', () => {
   describe('Contract Creation Form', () => {
     it('does not show form initially', () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('shows form when create button is clicked', () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -160,7 +138,7 @@ describe('ContractsPage', () => {
 
     it('closes form when cancel is clicked', async () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -174,7 +152,7 @@ describe('ContractsPage', () => {
 
     it('validates required fields before submission', async () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -191,7 +169,7 @@ describe('ContractsPage', () => {
 
     it('validates Stellar addresses before submission', async () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -227,7 +205,7 @@ describe('ContractsPage', () => {
     it('saves contract and refreshes list on successful submission', async () => {
       // Start with empty list
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -295,7 +273,7 @@ describe('ContractsPage', () => {
 
     it('closes form after successful submission', async () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -345,7 +323,7 @@ describe('ContractsPage', () => {
     it('displays newly created contract in the list', async () => {
       // Start with empty list
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       // Open and submit form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -398,7 +376,7 @@ describe('ContractsPage', () => {
   describe('Form Requirements', () => {
     it('requires at least two parties', async () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -427,30 +405,16 @@ describe('ContractsPage', () => {
   describe('Page Structure', () => {
     it('renders page heading', () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
 
       expect(screen.getByRole('heading', { name: 'Contracts', level: 1 })).toBeInTheDocument();
     });
 
     it('renders main landmark', () => {
       mockListContracts.mockReturnValue([]);
-      renderWithProviders(<ContractsPage />);
-
-      expect(screen.getByRole('main')).toBeInTheDocument();
-    });
-
-    it('opens contract creation form with keyboard Enter on the action button', async () => {
-      const user = userEvent.setup();
-      mockListContracts.mockReturnValue([]);
       render(<ContractsPage />);
 
-      const createButton = screen.getByRole('button', { name: /create contract/i });
-      createButton.focus();
-      await user.keyboard('{Enter}');
-
-      expect(screen.getByRole('dialog', { name: /create new contract/i })).toBeInTheDocument();
-      expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'create-contract-title');
-      expect(screen.getByRole('heading', { name: /create new contract/i })).toHaveAttribute('id', 'create-contract-title');
+      expect(screen.getByRole('main')).toBeInTheDocument();
     });
   });
 
@@ -468,7 +432,7 @@ describe('ContractsPage', () => {
     ];
     mockListContracts.mockReturnValue(existingContracts);
 
-    renderWithProviders(<ContractsPage />);
+    render(<ContractsPage />);
 
     expect(screen.getByText('Existing Contract')).toBeInTheDocument();
     expect(screen.getByText(/Active · Created Apr 20, 2026/)).toBeInTheDocument();
@@ -476,7 +440,7 @@ describe('ContractsPage', () => {
 
   it('calls saveContract and refreshes contracts on form submission', async () => {
     mockListContracts.mockReturnValue([]);
-    renderWithProviders(<ContractsPage />);
+    render(<ContractsPage />);
 
     // Open the form
     fireEvent.click(screen.getByRole('button', { name: 'Create Contract' }));
@@ -517,182 +481,5 @@ describe('ContractsPage', () => {
     });
 
     expect(mockListContracts).toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Contract status filter integration
-// ---------------------------------------------------------------------------
-
-describe('ContractStatusFilter integration', () => {
-  const MIXED_CONTRACTS = [
-    {
-      contractName: 'Alpha Project',
-      parties: [],
-      totalValue: 1000,
-      currency: 'USD',
-      status: 'Active' as const,
-      createdAt: 'Jan 1, 2025',
-      milestoneCount: 1,
-    },
-    {
-      contractName: 'Beta Project',
-      parties: [],
-      totalValue: 2000,
-      currency: 'USD',
-      status: 'Completed' as const,
-      createdAt: 'Feb 1, 2025',
-      milestoneCount: 3,
-    },
-    {
-      contractName: 'Gamma Project',
-      parties: [],
-      totalValue: 3000,
-      currency: 'USD',
-      status: 'Pending' as const,
-      createdAt: 'Mar 1, 2025',
-      milestoneCount: 2,
-    },
-    {
-      contractName: 'Delta Project',
-      parties: [],
-      totalValue: 4000,
-      currency: 'USD',
-      status: 'Active' as const,
-      createdAt: 'Apr 1, 2025',
-      milestoneCount: 4,
-    },
-    {
-      contractName: 'Epsilon Project',
-      parties: [],
-      totalValue: 5000,
-      currency: 'USD',
-      status: 'Disputed' as const,
-      createdAt: 'May 1, 2025',
-      milestoneCount: 1,
-    },
-  ];
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    localStorage.clear();
-    mockListContracts.mockReturnValue([...MIXED_CONTRACTS]);
-    mockIsValidStellarAddress.mockReturnValue(true);
-  });
-
-  it('renders the filter when contracts exist', () => {
-    render(<ContractsPage />);
-
-    expect(
-      screen.getByRole('radiogroup', { name: 'Filter contracts by status' }),
-    ).toBeInTheDocument();
-  });
-
-  it('does not render the filter when there are no contracts', () => {
-    mockListContracts.mockReturnValue([]);
-    render(<ContractsPage />);
-
-    expect(
-      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('defaults to "All" and shows all contracts', () => {
-    render(<ContractsPage />);
-
-    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
-    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
-    expect(screen.getByText('Beta Project')).toBeInTheDocument();
-    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
-    expect(screen.getByText('Delta Project')).toBeInTheDocument();
-    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
-  });
-
-  it('filters to show only Active contracts', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
-
-    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
-    expect(screen.getByText('Delta Project')).toBeInTheDocument();
-    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
-    expect(screen.queryByText('Gamma Project')).not.toBeInTheDocument();
-    expect(screen.queryByText('Epsilon Project')).not.toBeInTheDocument();
-  });
-
-  it('filters to show only Completed contracts', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
-
-    expect(screen.getByText('Beta Project')).toBeInTheDocument();
-    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
-  });
-
-  it('filters to show only Pending contracts', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Pending' }));
-
-    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
-    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
-  });
-
-  it('filters to show only Disputed contracts', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Disputed' }));
-
-    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
-    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
-  });
-
-  it('shows empty message when no contracts match the filter', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Paid' }));
-
-    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
-    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
-  });
-
-  it('switches back to showing all contracts when "All" is selected', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
-    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('radio', { name: 'All' }));
-    expect(screen.getByText('Beta Project')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
-  });
-
-  it('announces the filtered count to screen readers', () => {
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
-
-    expect(screen.getByText('Showing 2 active contracts')).toBeInTheDocument();
-  });
-
-  it('does not show filter or list in empty state', () => {
-    mockListContracts.mockReturnValue([]);
-    render(<ContractsPage />);
-
-    expect(
-      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText('No contracts match the selected filter.')).not.toBeInTheDocument();
-  });
-
-  it('filter does not appear while the creation form is open', () => {
-    mockListContracts.mockReturnValue(MIXED_CONTRACTS);
-    render(<ContractsPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
-
-    expect(
-      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
-    ).not.toBeInTheDocument();
   });
 });

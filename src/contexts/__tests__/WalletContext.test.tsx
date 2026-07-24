@@ -6,7 +6,7 @@ import { ToastProvider } from '@/components/toast/toast-provider';
 import { PreferencesProvider } from '@/lib/preferences';
 import { getItem, setItem, removeItem } from '@/lib/safeStorage';
 
-const { WalletProvider, useWallet, MOCKED_STELLAR_ADDRESS, ANNOUNCE_DEBOUNCE_MS } = jest.requireActual('../WalletContext');
+const { WalletProvider, useWallet, MOCKED_STELLAR_ADDRESS } = jest.requireActual('../WalletContext');
 
 // Mock safeStorage
 jest.mock('@/lib/safeStorage', () => ({
@@ -289,14 +289,10 @@ describe('WalletContext persistence', () => {
       });
 
       expect(screen.getByTestId('address')).toHaveTextContent('No address');
-      // Use getAllByRole because the WalletAnnouncer also renders a role="status"
-      // live region; we want the toast notification specifically.
-      const statusRegions = screen.getAllByRole('status');
-      const sessionExpiredRegion = statusRegions.find(el => el.textContent?.includes('Session expired'));
-      expect(sessionExpiredRegion).toBeTruthy();
+      expect(screen.getByRole('status')).toHaveTextContent('Session expired');
     });
 
-    it('resets the timer on pointermove', async () => {
+    it('resets the timer on user activity', async () => {
       renderWithProviders(<WalletConsumer />, IDLE_TIMEOUT);
 
       await act(async () => {
@@ -306,88 +302,24 @@ describe('WalletContext persistence', () => {
         jest.advanceTimersByTime(1000);
       });
 
-      // Advance to just before expiry, fire pointer activity, then advance
-      // half the timeout again — should still be connected.
       await act(async () => {
         jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
       });
+
       await act(async () => {
         fireEvent.pointerMove(window);
       });
+
       await act(async () => {
         jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
       });
 
       expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
 
-      // Now let the full timeout expire without any activity.
       await act(async () => {
         jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
       });
 
-      expect(screen.getByTestId('address')).toHaveTextContent('No address');
-    });
-
-    it('resets the timer on keydown', async () => {
-      renderWithProviders(<WalletConsumer />, IDLE_TIMEOUT);
-
-      await act(async () => {
-        screen.getByTestId('connect-btn').click();
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1000);
-      });
-
-      // Advance to 80 % of the timeout, then simulate a keypress.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT * 0.8);
-      });
-      await act(async () => {
-        fireEvent.keyDown(window, { key: 'a' });
-      });
-
-      // 80 % of the *original* timeout has elapsed since the keydown — still
-      // within a fresh window, so the session must still be active.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT * 0.8);
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
-
-      // Advance the remaining 20 % to trigger expiry.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT * 0.2);
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent('No address');
-    });
-
-    it('resets the timer on visibilitychange', async () => {
-      renderWithProviders(<WalletConsumer />, IDLE_TIMEOUT);
-
-      await act(async () => {
-        screen.getByTestId('connect-btn').click();
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1000);
-      });
-
-      // Advance to halfway, then simulate the user returning to the tab.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
-      });
-      await act(async () => {
-        fireEvent(window, new Event('visibilitychange'));
-      });
-
-      // Another half-timeout passes — still within the fresh window.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
-
-      // Let the full fresh timeout expire.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT / 2);
-      });
       expect(screen.getByTestId('address')).toHaveTextContent('No address');
     });
 
@@ -406,92 +338,6 @@ describe('WalletContext persistence', () => {
       });
 
       expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
-    });
-
-    it('manual disconnect before timeout prevents any auto-disconnect from firing', async () => {
-      renderWithProviders(<WalletConsumer />, IDLE_TIMEOUT);
-
-      await act(async () => {
-        screen.getByTestId('connect-btn').click();
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
-
-      // Disconnect manually before the idle timer fires.
-      await act(async () => {
-        screen.getByTestId('disconnect-btn').click();
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent('No address');
-
-      // Advance past the original idle window — no phantom auto-disconnect
-      // (session expired toast) should appear.
-      await act(async () => {
-        jest.advanceTimersByTime(IDLE_TIMEOUT * 2);
-      });
-
-      expect(screen.getByTestId('address')).toHaveTextContent('No address');
-      // No "Session expired" toast should have appeared.
-      expect(screen.queryByRole('status')).toBeNull();
-    });
-
-    it('cleans up event listeners and timer on unmount', async () => {
-      const addSpy = jest.spyOn(window, 'addEventListener');
-      const removeSpy = jest.spyOn(window, 'removeEventListener');
-      const clearSpy = jest.spyOn(global, 'clearTimeout');
-
-      const { unmount } = renderWithProviders(<WalletConsumer />, IDLE_TIMEOUT);
-
-      await act(async () => {
-        screen.getByTestId('connect-btn').click();
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(screen.getByTestId('address')).toHaveTextContent(MOCKED_STELLAR_ADDRESS);
-
-      // Record how many removeEventListener calls exist before unmount.
-      const removeCallsBefore = removeSpy.mock.calls.length;
-      const clearCallsBefore = clearSpy.mock.calls.length;
-
-      act(() => {
-        unmount();
-      });
-
-      // The cleanup should have removed all 5 IDLE_EVENTS listeners.
-      const removeCallsAdded = removeSpy.mock.calls.length - removeCallsBefore;
-      expect(removeCallsAdded).toBeGreaterThanOrEqual(5);
-
-      // The cleanup should have called clearTimeout at least once to cancel
-      // the pending idle timer.
-      expect(clearSpy.mock.calls.length).toBeGreaterThan(clearCallsBefore);
-
-      addSpy.mockRestore();
-      removeSpy.mockRestore();
-      clearSpy.mockRestore();
-    });
-
-    it('does not register any listeners when idleTimeout is 0', async () => {
-      const addSpy = jest.spyOn(window, 'addEventListener');
-
-      renderWithProviders(<WalletConsumer />, 0);
-
-      await act(async () => {
-        screen.getByTestId('connect-btn').click();
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1000);
-      });
-
-      // None of the idle-specific events should have been registered.
-      const idleEvents = ['pointermove', 'keydown', 'visibilitychange', 'mousedown', 'touchstart'];
-      const idleListenerCalls = addSpy.mock.calls.filter(([evt]) =>
-        idleEvents.includes(evt as string),
-      );
-      expect(idleListenerCalls).toHaveLength(0);
-
-      addSpy.mockRestore();
     });
   });
 
@@ -563,87 +409,6 @@ describe('WalletContext persistence', () => {
     });
     expect(screen.getByTestId('address')).toHaveTextContent('null');
     expect(removeItem).toHaveBeenCalledWith('wallet_connected_address');
-  });
-
-  test('does not set address when safeStorage returns null on mount', () => {
-    (getItem as jest.Mock).mockReturnValue(null);
-    render(
-      <WalletProvider idleTimeout={0}>
-        <MockComponent />
-      </WalletProvider>
-    );
-    expect(screen.getByTestId('address')).toHaveTextContent('null');
-  });
-
-  test('cleans up idle event listeners and timer on unmount', () => {
-    (getItem as jest.Mock).mockReturnValue(null);
-    const { unmount } = render(
-      <ToastProvider>
-        <WalletProvider idleTimeout={2000}>
-          <MockComponent />
-        </WalletProvider>
-      </ToastProvider>
-    );
-    act(() => {
-      screen.getByText('Connect').click();
-    });
-    jest.advanceTimersByTime(1000);
-    // Unmount while connected with an active idle timer
-    expect(() => unmount()).not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// SSR / no-window guard
-// ---------------------------------------------------------------------------
-describe('WalletProvider – SSR guard (no window)', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('does not register event listeners or timers when window is undefined', async () => {
-    // Temporarily remove window from global scope to simulate an SSR
-    // environment where the DOM is unavailable.
-    const originalWindow = global.window;
-    // @ts-expect-error — intentionally deleting window to simulate SSR
-    delete global.window;
-
-    const addSpy = jest.spyOn(originalWindow, 'addEventListener');
-
-    let threw = false;
-    try {
-      render(
-        <PreferencesProvider>
-          <ToastProvider>
-            <WalletProvider idleTimeout={5000}>
-              <MockComponent />
-            </WalletProvider>
-          </ToastProvider>
-        </PreferencesProvider>,
-      );
-    } catch {
-      threw = true;
-    }
-
-    // Restore window immediately so subsequent tests are unaffected.
-    global.window = originalWindow;
-
-    // The provider must not throw in an SSR environment.
-    expect(threw).toBe(false);
-
-    // No idle-specific listeners should have been attached to window.
-    const idleEvents = ['pointermove', 'keydown', 'visibilitychange', 'mousedown', 'touchstart'];
-    const idleListenerCalls = addSpy.mock.calls.filter(([evt]) =>
-      idleEvents.includes(evt as string),
-    );
-    expect(idleListenerCalls).toHaveLength(0);
-
-    addSpy.mockRestore();
   });
 });
 
@@ -824,259 +589,5 @@ describe('WalletContext – error toast surfacing', () => {
 
     // Inline error must be set by the catch block in connect()
     expect(screen.getByTestId('inline-error').textContent).toBe('Failed to connect wallet');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// WalletAnnouncer live-region tests  (issue #532)
-// ---------------------------------------------------------------------------
-
-/**
- * Helpers shared across WalletAnnouncer tests.
- *
- * `renderAnnouncer` renders a full WalletProvider tree (including the built-in
- * WalletAnnouncer) together with a minimal consumer that exposes buttons to
- * drive connect / disconnect.  Fake timers are assumed by every test in this
- * suite — each `describe` block sets them up in `beforeEach`.
- */
-function WalletDriverConsumer() {
-  const { connect, disconnect } = useWallet();
-  return (
-    <>
-      <button data-testid="driver-connect" onClick={connect}>Connect</button>
-      <button data-testid="driver-disconnect" onClick={disconnect}>Disconnect</button>
-    </>
-  );
-}
-
-const renderAnnouncer = (idleTimeout = 0) =>
-  render(
-    <PreferencesProvider>
-      <ToastProvider>
-        <WalletProvider idleTimeout={idleTimeout}>
-          <WalletDriverConsumer />
-        </WalletProvider>
-      </ToastProvider>
-    </PreferencesProvider>
-  );
-
-/** Advance fake timers past the debounce window */
-const flushDebounce = () =>
-  act(() => {
-    jest.advanceTimersByTime(ANNOUNCE_DEBOUNCE_MS + 50);
-  });
-
-describe('WalletAnnouncer – live-region announcements (issue #532)', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
-    (getItem as jest.Mock).mockReturnValue(null);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  // ── Structural / a11y attributes ──────────────────────────────────────────
-
-  it('renders a live region with role="status", aria-live="polite", and aria-atomic="true"', () => {
-    renderAnnouncer();
-    const region = document.querySelector('[aria-live="polite"]');
-    expect(region).toBeInTheDocument();
-    expect(region).toHaveAttribute('role', 'status');
-    expect(region).toHaveAttribute('aria-atomic', 'true');
-  });
-
-  it('live region has aria-label "Wallet status updates"', () => {
-    renderAnnouncer();
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region).toHaveAttribute('aria-label', 'Wallet status updates');
-  });
-
-  it('live region has sr-only class so it is visually hidden', () => {
-    renderAnnouncer();
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region).toHaveClass('sr-only');
-  });
-
-  // ── No mount announcement ─────────────────────────────────────────────────
-
-  it('does NOT announce on initial mount when no wallet address is present', () => {
-    renderAnnouncer();
-    flushDebounce();
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('');
-  });
-
-  it('does NOT announce on mount when address is rehydrated from storage', () => {
-    (getItem as jest.Mock).mockReturnValue(MOCKED_STELLAR_ADDRESS);
-    renderAnnouncer();
-    flushDebounce();
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('');
-  });
-
-  // ── Connect announcement ──────────────────────────────────────────────────
-
-  it('announces "Wallet connected." after a successful connect()', async () => {
-    renderAnnouncer();
-
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000); // mock connect delay
-    });
-    flushDebounce();
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('Wallet connected.');
-  });
-
-  // ── Disconnect announcement ───────────────────────────────────────────────
-
-  it('announces "Wallet disconnected." after an explicit disconnect()', async () => {
-    renderAnnouncer();
-
-    // First connect
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-    flushDebounce();
-
-    // Now disconnect
-    await act(async () => {
-      screen.getByTestId('driver-disconnect').click();
-    });
-    flushDebounce();
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('Wallet disconnected.');
-  });
-
-  it('announces "Wallet disconnected." after idle auto-disconnect', async () => {
-    const IDLE_TIMEOUT = 3000;
-    renderAnnouncer(IDLE_TIMEOUT);
-
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000); // mock connect delay
-    });
-    flushDebounce(); // flush "connected" announcement
-
-    // Wait past idle timeout
-    await act(async () => {
-      jest.advanceTimersByTime(IDLE_TIMEOUT);
-    });
-    flushDebounce();
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('Wallet disconnected.');
-  });
-
-  // ── Debounce behaviour ────────────────────────────────────────────────────
-
-  it('does NOT announce before the debounce window elapses', async () => {
-    renderAnnouncer();
-
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-
-    // Advance to just before the debounce fires
-    act(() => {
-      jest.advanceTimersByTime(ANNOUNCE_DEBOUNCE_MS - 10);
-    });
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('');
-  });
-
-  it('collapses rapid connect → disconnect into a single "Wallet disconnected." announcement', async () => {
-    renderAnnouncer();
-
-    // Connect
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-
-    // Immediately disconnect before the debounce fires
-    await act(async () => {
-      screen.getByTestId('driver-disconnect').click();
-    });
-
-    // Now flush the debounce — only the last state change should surface
-    flushDebounce();
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    // The last change was disconnect → "Wallet disconnected."
-    expect(region?.textContent).toBe('Wallet disconnected.');
-  });
-
-  it('announces on each connect → disconnect cycle', async () => {
-    renderAnnouncer();
-
-    // First connect
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-    flushDebounce();
-    expect(document.querySelector('[aria-live="polite"][role="status"]')?.textContent).toBe('Wallet connected.');
-
-    // First disconnect
-    await act(async () => {
-      screen.getByTestId('driver-disconnect').click();
-    });
-    flushDebounce();
-    expect(document.querySelector('[aria-live="polite"][role="status"]')?.textContent).toBe('Wallet disconnected.');
-
-    // Second connect
-    await act(async () => {
-      screen.getByTestId('driver-connect').click();
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-    flushDebounce();
-    expect(document.querySelector('[aria-live="polite"][role="status"]')?.textContent).toBe('Wallet connected.');
-  });
-
-  // ── Edge cases ────────────────────────────────────────────────────────────
-
-  it('does NOT announce when disconnect() is called with no active session (null → null)', async () => {
-    renderAnnouncer();
-
-    await act(async () => {
-      screen.getByTestId('driver-disconnect').click();
-    });
-    flushDebounce();
-
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region?.textContent).toBe('');
-  });
-
-  it('live region is present and empty at rest (no stale announcements between tests)', () => {
-    renderAnnouncer();
-    const region = document.querySelector('[aria-live="polite"][role="status"]');
-    expect(region).toBeInTheDocument();
-    expect(region?.textContent).toBe('');
-  });
-
-  it('ANNOUNCE_DEBOUNCE_MS is exported and equals 300', () => {
-    expect(ANNOUNCE_DEBOUNCE_MS).toBe(300);
   });
 });

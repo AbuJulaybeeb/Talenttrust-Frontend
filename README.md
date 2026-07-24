@@ -38,9 +38,7 @@ Open [http://localhost:3000](http://localhost:3000).
 This repository keeps user-facing and implementation notes inside the `docs/` folder. Key documentation includes:
 
 - `docs/components/Accessibility.md` — Accessibility testing, a11y helpers, and issue #383 notes
-- `docs/components/MilestonesList.md` � Milestones list props, rendered states, and usage contract
 - `docs/components/ReputationPage.md` — Reputation page implementation and rendering states
-- `docs/components/WalletConnectButton.md` — Wallet button props, rendered states, and usage contract
 - `docs/data-model.md` — Data model and persistence guide
 - `docs/persistence.md` — Persistence API and local storage patterns
 - `docs/preferences.md` — Preferences provider and currency/locale helpers
@@ -96,14 +94,14 @@ The app includes a global accessible toast system for transient feedback:
 
 ## Session safety
 
-To improve security on shared or public machines, the [`WalletProvider`](src/contexts/WalletContext.tsx) includes an optional idle auto-disconnect safeguard.
+To improve security on shared or public machines, the [`WalletProvider`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L31) includes an optional idle auto-disconnect safeguard.
 
-- **Configurable Timeout**: Pass an `idleTimeout` prop (in milliseconds) to [`WalletProvider`](src/contexts/WalletContext.tsx) in [`src/app/layout.tsx`](src/app/layout.tsx).
-- **Activity Monitoring**: The timer resets on user activity (pointer moves, key presses, clicks, tab visibility changes).
-- **Auto-Disconnect**: Once the idle period expires, the wallet is automatically disconnected and a "Session expired" toast is shown.
+- **Configurable Timeout**: Pass an [`idleTimeout`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L33) prop (in milliseconds) to [`WalletProvider`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L31) in [`src/app/layout.tsx`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/app/layout.tsx).
+- **Activity Monitoring**: The timer resets on user activity (pointer moves, key presses, clicks, etc.).
+- **Auto-Disconnect**: Once the idle period expires, the wallet is automatically disconnected and a notification is shown.
 - **Default Behaviour**: The safeguard is disabled by default (`idleTimeout={0}`). Recommended value for production is 15 minutes (`900000` ms).
 
-For more details on the session lifecycle, storage keys, and inactivity events, see the [Wallet Session Management Guide](docs/contexts/wallet-session.md).
+For more details on the session lifecycle, storage keys, and inactivity events, see the [Wallet Session Management Guide](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/docs/contexts/wallet-session.md).
 
 Example:
 
@@ -220,10 +218,15 @@ The homepage contains an accessible, fully validated sign-in form:
 
 1. Fork the repo and create a branch from `main`.
 2. Install deps, run tests and build: `npm install && npm test && npm run build`.
-3. Use the contribution templates in [`.github/ISSUE_TEMPLATE/bug_report.md`](.github/ISSUE_TEMPLATE/bug_report.md), [`.github/ISSUE_TEMPLATE/feature_request.md`](.github/ISSUE_TEMPLATE/feature_request.md), and [`.github/pull_request_template.md`](.github/pull_request_template.md) so reports include the impacted route/component, reproduction steps, expected behavior, lint/test/build status, coverage, a11y, and security notes.
-4. If you need help or review context, join the community [Discord](https://discord.gg/WqnGpcPx).
+3. Open a pull request. CI runs lint, build, and tests on push/PR to `main`.
 
-CI runs lint, build, and tests on every push and pull request to `main`.
+When filing issues or opening PRs, please use the provided GitHub templates — they make reviews faster and keep the project history clean:
+
+- **Bug reports** — `.github/ISSUE_TEMPLATE/bug_report.md`: includes reproduction steps, environment details, and an impacted-route field.
+- **Feature requests** — `.github/ISSUE_TEMPLATE/feature_request.md`: covers problem statement, proposed solution, and alternatives.
+- **Pull requests** — `.github/pull_request_template.md`: includes a pre-flight checklist (`lint` / `test` / `build`), a 95% coverage confirmation, and accessibility & security notes.
+
+If you need quick help before filing an issue, the community [Discord](https://discord.gg/WqnGpcPx) is the fastest way to reach the team.
 
 ## Features
 

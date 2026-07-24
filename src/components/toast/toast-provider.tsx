@@ -2,7 +2,6 @@
 
 import {
   createContext,
-  memo,
   useCallback,
   useContext,
   useEffect,
@@ -12,8 +11,8 @@ import {
 } from 'react';
 import { usePreferences } from '@/lib/preferences';
 import type { ToastDuration } from '@/lib/preferences';
-import { getToastStyles } from './toast-styles';
-import type { ToastVariant } from './toast-styles';
+
+type ToastVariant = 'success' | 'error';
 
 /** Optional inline action attached to a toast. */
 type ToastAction = {
@@ -23,16 +22,10 @@ type ToastAction = {
   onClick: () => void;
 };
 
-export type ToastInput = {
+type ToastInput = {
   title: string;
   description?: string;
   duration?: number;
-  /**
-   * Optional correlation / request ID attached to an error toast.
-   * When present it is included in the copied details to help with bug reports.
-   * Only meaningful on error-variant toasts; ignored on success toasts.
-   */
-  correlationId?: string;
   /**
    * Optional action button rendered inside the toast.
    * Clicking it fires `onClick` and immediately dismisses the toast.
@@ -40,7 +33,7 @@ export type ToastInput = {
   action?: ToastAction;
 };
 
-export type ToastRecord = ToastInput & {
+type ToastRecord = ToastInput & {
   id: string;
   variant: ToastVariant;
 };
@@ -68,39 +61,12 @@ const DURATION_MAP: Readonly<Record<ToastDuration, number | null>> = {
 
 /**
  * Maximum number of toasts that may be visible at the same time.
- * When a new toast would exceed this cap it is queued instead of shown;
- * queued toasts are promoted into view (oldest-first within the same
- * severity) as visible toasts are dismissed. This prevents a burst of
- * wallet/payout events from stacking toasts past the bottom of the
- * viewport and burying the dismiss buttons, without ever silently
- * dropping a toast — error toasts in particular always eventually show.
+ * When a new toast would exceed this cap the oldest visible toast is
+ * evicted (its auto-dismiss timer is cancelled) before the new one is
+ * appended.  This prevents a burst of wallet/payout events from stacking
+ * toasts past the bottom of the viewport and burying the dismiss buttons.
  */
 const MAX_VISIBLE_TOASTS = 4;
-
-type ToastQueueState = {
-  visible: ToastRecord[];
-  queued: ToastRecord[];
-};
-
-/**
- * Inserts a toast into a queue, keeping error toasts ahead of queued
- * success toasts (severity ordering) while preserving FIFO order within
- * each severity. This is what lets an error toast reach the front of the
- * line — and therefore get shown — sooner than success toasts that were
- * queued earlier, without ever discarding anything.
- */
-function enqueueBySeverity(queue: ToastRecord[], toast: ToastRecord): ToastRecord[] {
-  if (toast.variant !== 'error') {
-    return [...queue, toast];
-  }
-
-  const firstSuccessIndex = queue.findIndex((queued) => queued.variant !== 'error');
-  if (firstSuccessIndex === -1) {
-    return [...queue, toast];
-  }
-
-  return [...queue.slice(0, firstSuccessIndex), toast, ...queue.slice(firstSuccessIndex)];
-}
 
 /**
  * Generates a unique toast ID without mutating refs during render.
@@ -117,93 +83,28 @@ function generateToastId(): string {
   return `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Renders a single toast panel. Memoized so that an unrelated re-render of
- * `ToastProvider` (e.g. a preference or sibling state change that leaves
- * this toast's own props untouched) does not re-run the row's derived-data
- * computation (`getToastStyles`) or re-render its DOM.
- */
-export const ToastRow = memo(function ToastRow({
-  toast,
-  onDismiss,
-  onPauseTimer,
-  onResumeTimer,
-}: {
-  toast: ToastRecord;
-  onDismiss: (id: string) => void;
-  onPauseTimer: (id: string) => void;
-  onResumeTimer: (id: string) => void;
-}) {
-  const styles = useMemo(() => getToastStyles(toast.variant), [toast.variant]);
-  const badgeLabel = toast.variant === 'success' ? 'Success' : 'Error';
+function getToastStyles(variant: ToastVariant) {
+  // a11y/theming-27: badge classes were `bg-emerald-100 text-emerald-800`
+  // / `bg-rose-100 text-rose-800` — fixed Tailwind pastels that don't
+  // respond to [data-theme='dark']. Swapped for the --status-* variables
+  // defined in globals.css, which carry an audited light AND dark pair.
+  // Light-mode hex values are unchanged from the originals.
+  if (variant === 'success') {
+    return {
+      accent: 'bg-emerald-500',
+      badge: 'bg-[var(--status-success-bg)] text-[var(--status-success-foreground)]',
+      panel: 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm',
+    };
+  }
 
-  return (
-    <div
-      className={`pointer-events-auto overflow-hidden rounded-2xl border ${styles.panel} shadow-lg`}
-      onBlur={() => onResumeTimer(toast.id)}
-      onFocus={() => onPauseTimer(toast.id)}
-      onMouseEnter={() => onPauseTimer(toast.id)}
-      onMouseLeave={() => onResumeTimer(toast.id)}
-      role={toast.variant === 'error' ? 'alert' : 'status'}
-    >
-      <div className={`h-1.5 w-full ${styles.accent}`} />
-      <div className="flex items-start gap-3 p-4">
-        <div className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${styles.badge}`}>
-          {badgeLabel}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{toast.title}</p>
-          {toast.description ? (
-            // a11y/theming-27: was `text-slate-600`, which measured
-            // 2.36:1 against the dark --surface (#0f172a) — well
-            // below the 4.5:1 AA minimum for body text. Replaced
-            // with --muted-foreground, which is themed in
-            // globals.css and passes AA in both modes (4.55:1
-            // light, 6.96:1 dark). See docs/components/Accessibility.md.
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{toast.description}</p>
-          ) : null}
-          {toast.action ? (
-            // Action button: label is a plain text node — never set via
-            // innerHTML or dangerouslySetInnerHTML. Clicking fires the
-            // caller-supplied callback then immediately dismisses this toast.
-            <button
-              type="button"
-              onClick={() => {
-                toast.action!.onClick();
-                onDismiss(toast.id);
-              }}
-              className="mt-2 rounded-md px-3 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-1 bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90"
-            >
-              {toast.action.label}
-            </button>
-          ) : null}
-        </div>
-        <button
-          aria-label={`Dismiss ${badgeLabel.toLowerCase()} notification`}
-          // a11y/theming-27: was `text-slate-500 hover:bg-slate-100
-          // hover:text-slate-900`. text-slate-500 measured 3.75:1
-          // against the dark --surface — fails AA. The light hover
-          // background also stayed fixed-light, producing a bright
-          // patch on a dark panel. Replaced with themed tokens that
-          // pass AA in both modes.
-          // The `transition` utility is kept here; the global
-          // @media (prefers-reduced-motion: reduce) rule in
-          // globals.css collapses its duration to 0.01ms so the
-          // button snaps to its hover/focus state instantly for
-          // users who prefer reduced motion, without any layout
-          // shift or visibility change.
-          className="rounded-full p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-          onClick={() => onDismiss(toast.id)}
-          type="button"
-        >
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-    </div>
-  );
-});
+  return {
+    accent: 'bg-rose-500',
+    badge: 'bg-[var(--status-error-bg)] text-[var(--status-error-foreground)]',
+    panel: 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm',
+  };
+}
 
-export const ToastViewport = memo(function ToastViewport({
+function ToastViewport({
   toasts,
   onDismiss,
   onPauseTimer,
@@ -225,28 +126,83 @@ export const ToastViewport = memo(function ToastViewport({
         density === 'compact' ? 'gap-1.5' : 'gap-3'
       }`}
     >
-      {toasts.map((toast) => (
-        <ToastRow
-          key={toast.id}
-          onDismiss={onDismiss}
-          onPauseTimer={onPauseTimer}
-          onResumeTimer={onResumeTimer}
-          toast={toast}
-        />
-      ))}
+      {toasts.map((toast) => {
+        const styles = getToastStyles(toast.variant);
+        const badgeLabel = toast.variant === 'success' ? 'Success' : 'Error';
+
+        return (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto overflow-hidden rounded-2xl border ${styles.panel} shadow-lg`}
+            onBlur={() => onResumeTimer(toast.id)}
+            onFocus={() => onPauseTimer(toast.id)}
+            onMouseEnter={() => onPauseTimer(toast.id)}
+            onMouseLeave={() => onResumeTimer(toast.id)}
+            role={toast.variant === 'error' ? 'alert' : 'status'}
+          >
+            <div className={`h-1.5 w-full ${styles.accent}`} />
+            <div className="flex items-start gap-3 p-4">
+              <div className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${styles.badge}`}>
+                {badgeLabel}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{toast.title}</p>
+                {toast.description ? (
+                  // a11y/theming-27: was `text-slate-600`, which measured
+                  // 2.36:1 against the dark --surface (#0f172a) — well
+                  // below the 4.5:1 AA minimum for body text. Replaced
+                  // with --muted-foreground, which is themed in
+                  // globals.css and passes AA in both modes (4.55:1
+                  // light, 6.96:1 dark). See docs/components/Accessibility.md.
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)]">{toast.description}</p>
+                ) : null}
+                {toast.action ? (
+                  // Action button: label is a plain text node — never set via
+                  // innerHTML or dangerouslySetInnerHTML. Clicking fires the
+                  // caller-supplied callback then immediately dismisses this toast.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.action!.onClick();
+                      onDismiss(toast.id);
+                    }}
+                    className="mt-2 rounded-md px-3 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-1 bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90"
+                  >
+                    {toast.action.label}
+                  </button>
+                ) : null}
+              </div>
+              <button
+                aria-label={`Dismiss ${badgeLabel.toLowerCase()} notification`}
+                // a11y/theming-27: was `text-slate-500 hover:bg-slate-100
+                // hover:text-slate-900`. text-slate-500 measured 3.75:1
+                // against the dark --surface — fails AA. The light hover
+                // background also stayed fixed-light, producing a bright
+                // patch on a dark panel. Replaced with themed tokens that
+                // pass AA in both modes.
+                // The `transition` utility is kept here; the global
+                // @media (prefers-reduced-motion: reduce) rule in
+                // globals.css collapses its duration to 0.01ms so the
+                // button snaps to its hover/focus state instantly for
+                // users who prefer reduced motion, without any layout
+                // shift or visibility change.
+                className="rounded-full p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                onClick={() => onDismiss(toast.id)}
+                type="button"
+              >
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
-});
+}
 
-export const ToastAnnouncer = memo(function ToastAnnouncer({ toasts }: { toasts: ToastRecord[] }) {
-  const latestSuccess = useMemo(
-    () => [...toasts].reverse().find((toast) => toast.variant === 'success'),
-    [toasts],
-  );
-  const latestError = useMemo(
-    () => [...toasts].reverse().find((toast) => toast.variant === 'error'),
-    [toasts],
-  );
+function ToastAnnouncer({ toasts }: { toasts: ToastRecord[] }) {
+  const latestSuccess = [...toasts].reverse().find((toast) => toast.variant === 'success');
+  const latestError = [...toasts].reverse().find((toast) => toast.variant === 'error');
 
   return (
     <>
@@ -258,7 +214,7 @@ export const ToastAnnouncer = memo(function ToastAnnouncer({ toasts }: { toasts:
       </div>
     </>
   );
-});
+}
 
 type ToastTimerState = {
   expiresAt: number | null;
@@ -310,13 +266,10 @@ type ToastTimerState = {
  * | `'long'`       | 10000 ms  | Longer read time                |
  * | `'persistent'` | `null`    | No timer; manual dismiss only   |
  *
- * ## Visible cap and queueing
+ * ## Eviction
  *
- * A maximum of `4` toasts are visible at once. Anything created beyond that
- * cap is queued rather than dropped, and gets promoted into view as soon as
- * a visible toast is dismissed (auto or manual). Error toasts queued behind
- * success toasts are promoted first — a burst of successes can never bury or
- * silently discard an error.
+ * A maximum of `4` toasts are visible at once. If a fifth is created, the
+ * oldest is evicted to make room.
  *
  * ## Action button
  *
@@ -325,35 +278,11 @@ type ToastTimerState = {
  * toast. The label is always rendered as a plain text node to prevent XSS.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [queueState, setQueueState] = useState<ToastQueueState>({ visible: [], queued: [] });
-  const toasts = queueState.visible;
+  const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const toastTimersRef = useRef<Record<string, ToastTimerState>>({});
 
-  /**
-   * Dismisses a toast and, if it was actually visible, promotes the next
-   * queued toast into the freed slot — queue order already accounts for
-   * severity, so an error toast waiting in the queue is promoted ahead of
-   * any success toasts queued before it.
-   *
-   * The `wasVisible` guard matters: a dismiss button click and its
-   * auto-dismiss timer can race (e.g. the timer fires the same tick the
-   * user clicks dismiss), so this can be called twice for the same id.
-   * Without the guard, the second call would see a full visible list, a
-   * non-empty queue, and incorrectly promote another toast without
-   * actually freeing a slot — pushing the visible count past the cap.
-   */
   const dismissToast = useCallback((id: string) => {
-    setQueueState((current) => {
-      const wasVisible = current.visible.some((toast) => toast.id === id);
-      const remainingVisible = current.visible.filter((toast) => toast.id !== id);
-
-      if (!wasVisible || current.queued.length === 0) {
-        return { visible: remainingVisible, queued: current.queued };
-      }
-
-      const [promoted, ...restQueue] = current.queued;
-      return { visible: [...remainingVisible, promoted], queued: restQueue };
-    });
+    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
   }, []);
 
   /**
@@ -452,21 +381,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const createToast = useCallback(
     (variant: ToastVariant, toast: ToastInput, durationMs: number | null) => {
       const id = generateToastId();
-      const record: ToastRecord = { ...toast, duration: durationMs ?? undefined, id, variant };
 
-      setQueueState((current) => {
-        if (current.visible.length < MAX_VISIBLE_TOASTS) {
-          return { visible: [...current.visible, record], queued: current.queued };
+      setToasts((currentToasts) => {
+        const next = [...currentToasts, { ...toast, duration: durationMs ?? undefined, id, variant }];
+        if (next.length <= MAX_VISIBLE_TOASTS) {
+          return next;
         }
-        // At capacity — queue it instead of evicting anything. Error toasts
-        // jump ahead of already-queued success toasts (severity ordering);
-        // nothing is ever dropped.
-        return { visible: current.visible, queued: enqueueBySeverity(current.queued, record) };
+        // Evict the oldest toast and cancel its timer.
+        const [evicted, ...remaining] = next;
+        clearToastTimer(evicted.id);
+        return remaining;
       });
 
       return id;
     },
-    [],
+    [clearToastTimer],
   );
 
   const { preferences } = usePreferences();

@@ -1,11 +1,10 @@
 'use client';
 
-import React, { memo, useState, useCallback, FormEvent, useRef } from 'react';
+import React, { useState, useCallback, FormEvent, useRef } from 'react';
 import { FormField } from '@/components/FormField';
 import { ErrorSummary } from '@/components/ErrorSummary';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { sanitizeUserText } from '@/lib/sanitizeUserText';
-import { useFormSubmit } from '@/hooks/useFormSubmit';
 import type { Milestone } from '@/types/domain';
 
 export const MAX_MILESTONE_TITLE_LENGTH = 200;
@@ -59,7 +58,7 @@ export interface MilestoneCreationFormProps {
  * />
  * ```
  */
-const MilestoneCreationFormBase: React.FC<MilestoneCreationFormProps> = ({
+export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
   onSubmit,
   onCancel,
   contractId,
@@ -109,7 +108,7 @@ const MilestoneCreationFormBase: React.FC<MilestoneCreationFormProps> = ({
    * Handles form submission: validates, then calls `onSubmit` with the
    * constructed `Milestone` object on success.
    */
-  const handleRawSubmit = useCallback(
+  const handleSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
@@ -136,12 +135,10 @@ const MilestoneCreationFormBase: React.FC<MilestoneCreationFormProps> = ({
         contractId,
       };
 
-      return onSubmit(milestone);
+      onSubmit(milestone);
     },
     [title, payout, currency, status, dueDate, contractId, validateForm, onSubmit],
   );
-
-  const handleSubmit = useFormSubmit(handleRawSubmit, 'MilestoneCreationForm');
 
   const getFieldError = (fieldId: string): string | undefined =>
     errors.find((e) => e.fieldId === fieldId)?.message;
@@ -274,13 +271,3 @@ const MilestoneCreationFormBase: React.FC<MilestoneCreationFormProps> = ({
     </div>
   );
 };
-
-/**
- * Memoized export — React skips re-rendering this component when its props
- * are referentially equal to the previous render. Since the form is
- * always controlled by its parent and has stable callback refs, wrapping
- * in `memo` prevents redundant re-renders driven by unrelated state
- * updates in ancestor components (e.g. a parent that also manages a list).
- */
-export const MilestoneCreationForm = memo(MilestoneCreationFormBase);
-MilestoneCreationForm.displayName = 'MilestoneCreationForm';

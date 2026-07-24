@@ -1,28 +1,16 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
-import ContractStatusFilter, {
-  type ContractStatusValue,
-} from '@/components/contracts/ContractStatusFilter';
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
-
-const PAGE_SIZE = 5;
 
 const ContractsPage: React.FC = () => {
   // Initialise from localStorage on first render; subsequent saves trigger
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
-
-  /** Client-side filtered contracts derived from the active status filter. */
-  const filteredContracts = useMemo(() => {
-    if (statusFilter === 'All') return contracts;
-    return contracts.filter((c) => c.status === statusFilter);
-  }, [contracts, statusFilter]);
 
   /**
    * Opens the contract creation form modal.
@@ -48,20 +36,9 @@ const ContractsPage: React.FC = () => {
     setShowForm(false);
   }, []);
 
-  /**
-   * Loads the next batch of contracts.
-   */
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredContracts.length));
-  }, [filteredContracts.length]);
-
-  const hasMore = visibleCount < filteredContracts.length;
-
   return (
     <main className="min-h-screen p-8">
-      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold mb-6 focus-visible:outline-none">
-        Contracts
-      </h1>
+      <h1 className="text-2xl font-bold mb-6">Contracts</h1>
 
       {!showForm && contracts.length === 0 && (
         <EmptyState
@@ -75,34 +52,7 @@ const ContractsPage: React.FC = () => {
 
       {!showForm && contracts.length > 0 && (
         <>
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex flex-1 flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <label htmlFor="search-contracts" className="sr-only">Search contracts</label>
-                <input
-                  id="search-contracts"
-                  type="search"
-                  placeholder="Search contracts..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-              <div className="w-full sm:w-48">
-                <label htmlFor="filter-status" className="sr-only">Filter by status</label>
-                <select
-                  id="filter-status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Active">Active</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Completed">Completed</option>
-                </select>
-              </div>
-            </div>
+          <div className="mb-4 flex justify-end">
             <button
               type="button"
               onClick={handleCreateContract}
@@ -111,30 +61,20 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
-
-          <ContractStatusFilter
-            selected={statusFilter}
-            onChange={setStatusFilter}
-            resultCount={filteredContracts.length}
-          />
-
-          {filteredContracts.length === 0 ? (
-            <p className="text-sm text-slate-500">No contracts match the selected filter.</p>
-          ) : (
-            <ul className="space-y-4">
-              {filteredContracts.map((contract, idx) => (
-                <li
-                  key={`${contract.contractName}-${idx}`}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <p className="font-semibold text-slate-900">{contract.contractName}</p>
-                  <p className="text-sm text-slate-500">
-                    {contract.status} · Created {contract.createdAt}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* TODO: Replace with a proper ContractSummary list component. */}
+          <ul className="space-y-4">
+            {contracts.map((contract, idx) => (
+              <li
+                key={`${contract.contractName}-${idx}`}
+                className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <p className="font-semibold text-slate-900">{contract.contractName}</p>
+                <p className="text-sm text-slate-500">
+                  {contract.status} · Created {contract.createdAt}
+                </p>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -149,3 +89,4 @@ const ContractsPage: React.FC = () => {
 };
 
 export default ContractsPage;
+
