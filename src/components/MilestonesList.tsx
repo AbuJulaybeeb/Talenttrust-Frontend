@@ -1,5 +1,4 @@
-import { useState, useRef } from 'react';
-import BackToTop from './BackToTop';
+import React, { useState, useRef } from 'react';
 import StatusBadge, { StatusType, statusColorMap, statusIconMap } from './StatusBadge';
 import { usePreferences } from '@/lib/preferences';
 import { isDueSoon } from '@/lib/dueSoon';
@@ -24,63 +23,8 @@ export type MilestonesListProps = {
 
 export const REMINDER_WINDOW_DAYS = 7;
 
-export type SortOption = 'dueDate-asc' | 'dueDate-desc' | 'payout-asc' | 'payout-desc';
-
-/**
- * Filters milestones by title using case-insensitive matching.
- *
- * @param milestones - The array of milestones to filter.
- * @param query - The search query string.
- * @returns A new array containing only milestones whose titles include the query (case-insensitive).
- */
-export function filterMilestonesByTitle(milestones: Milestone[], query: string): Milestone[] {
-  if (!query.trim()) {
-    return milestones;
-  }
-  const lowerQuery = query.toLowerCase();
-  return milestones.filter((milestone) =>
-    milestone.title.toLowerCase().includes(lowerQuery)
-  );
-}
-
-/**
- * Sorts milestones by due date or payout in ascending or descending order.
- * Milestones without due dates are sorted to the end when sorting by due date.
- *
- * @param milestones - The array of milestones to sort.
- * @param sortOption - The sort option to apply.
- * @returns A new array with milestones sorted according to the specified option.
- */
-export function sortMilestones(milestones: Milestone[], sortOption: SortOption): Milestone[] {
-  const sorted = [...milestones];
-
-  switch (sortOption) {
-    case 'dueDate-asc':
-      return sorted.sort((a, b) => {
-        if (!a.dueDate && !b.dueDate) return 0;
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-      });
-    case 'dueDate-desc':
-      return sorted.sort((a, b) => {
-        if (!a.dueDate && !b.dueDate) return 0;
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
-      });
-    case 'payout-asc':
-      return sorted.sort((a, b) => a.payout - b.payout);
-    case 'payout-desc':
-      return sorted.sort((a, b) => b.payout - a.payout);
-    default:
-      return sorted;
-  }
-}
-
-const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) => {
-  const { formatAmount, preferences } = usePreferences();
-  const { listDensity } = preferences;
+const MilestonesList = React.memo(({ milestones, contractCurrency }: MilestonesListProps) => {
+  const { formatAmount } = usePreferences();
   const [isDismissed, setIsDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('dueDate-asc');
@@ -289,43 +233,9 @@ const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) =
         tabIndex={milestones.length > 0 ? 0 : undefined}
         className={`mt-6 max-h-[calc(100vh-260px)] overflow-y-auto pr-2 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 ${listDensity === 'compact' ? 'space-y-2' : 'space-y-4'}`}
       >
-        {displayedMilestones.length === 0 && searchQuery ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-            <p className="text-sm text-slate-600">No milestones match your search.</p>
-            <button
-              onClick={() => setSearchQuery('')}
-              className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
-            >
-              Clear search
-            </button>
-          </div>
-        ) : displayedMilestones.length === 0 && milestones.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-            <p className="text-sm text-slate-600">No milestones yet.</p>
-          </div>
-        ) : (
-          displayedMilestones.map((milestone) => (
-          <article
-            key={milestone.id}
-            id={`milestone-${milestone.id}`}
-            className={`rounded-3xl border border-slate-200 bg-slate-50 shadow-sm ${listDensity === 'compact' ? 'p-3' : 'p-4'}`}
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">{milestone.title}</p>
-                <p className="mt-1 text-sm text-slate-500">Due {milestone.dueDate ?? 'TBD'}</p>
-              </div>
-              <StatusBadge status={milestone.status} />
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
-              <p>Payout</p>
-              <p className="font-semibold text-slate-900">
-                {formatAmount(milestone.payout, milestone.currency)}
-              </p>
-            </div>
-          </article>
-          ))
-        )}
+          {milestones.map((milestone) => (
+            <MilestoneRow key={milestone.id} milestone={milestone} formatAmount={formatAmount} />
+          ))}
       </div>
 
       {milestones.length > 0 && (
@@ -335,6 +245,29 @@ const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) =
       )}
     </section>
   );
-};
+});
+
+// Memoized row component for individual milestone
+const MilestoneRow = React.memo(({ milestone, formatAmount }: { milestone: Milestone; formatAmount: (amount: number, currency: string) => string; }) => (
+  <article
+    id={`milestone-${milestone.id}`}
+    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
+  >
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-sm font-medium text-slate-600">{milestone.title}</p>
+        <p className="mt-1 text-sm text-slate-500">Due {milestone.dueDate ?? 'TBD'}</p>
+      </div>
+      <StatusBadge status={milestone.status} />
+    </div>
+    <div className="mt-4 flex items-center justify-between gap-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
+      <p>Payout</p>
+      <p className="font-semibold text-slate-900">
+        {formatAmount(milestone.payout, milestone.currency)}
+      </p>
+    </div>
+  </article>
+));
+
 
 export default MilestonesList;
