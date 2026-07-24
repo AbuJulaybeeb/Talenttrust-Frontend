@@ -145,6 +145,17 @@ describe('EmptyState', () => {
 
     illustration = screen.getByRole('region').querySelector('[aria-hidden="true"]');
     expect(illustration).toHaveClass('bg-amber-50');
+
+    rerender(
+      <EmptyState
+        illustration="wallet"
+        title="Connect Your Wallet"
+        description="Connect a Stellar wallet."
+      />
+    );
+
+    illustration = screen.getByRole('region').querySelector('[aria-hidden="true"]');
+    expect(illustration).toHaveClass('bg-violet-50');
   });
 
   it('does not render action button when actionLabel or onAction is missing', () => {

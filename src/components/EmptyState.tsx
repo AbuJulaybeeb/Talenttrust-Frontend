@@ -2,7 +2,7 @@
 
 import React, { useId } from 'react';
 
-export type EmptyStateVariant = 'contracts' | 'milestones' | 'reputation';
+export type EmptyStateVariant = 'contracts' | 'milestones' | 'reputation' | 'wallet';
 
 interface EmptyStateProps {
   icon?: React.ReactNode;
@@ -19,6 +19,7 @@ const illustrationClassNames: Record<EmptyStateVariant, string> = {
   contracts: 'bg-blue-50 text-blue-700 ring-blue-100',
   milestones: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
   reputation: 'bg-amber-50 text-amber-700 ring-amber-100',
+  wallet: 'bg-violet-50 text-violet-700 ring-violet-100',
 };
 
 const illustrations: Record<EmptyStateVariant, React.ReactNode> = {
@@ -45,6 +46,14 @@ const illustrations: Record<EmptyStateVariant, React.ReactNode> = {
         strokeWidth="4"
       />
       <path d="M24 54h16" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
+    </svg>
+  ),
+  wallet: (
+    <svg className="h-16 w-16" fill="none" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="8" y="16" width="48" height="36" rx="6" stroke="currentColor" strokeWidth="4" />
+      <rect x="24" y="28" width="16" height="12" rx="3" stroke="currentColor" strokeWidth="3" />
+      <circle cx="34" cy="34" r="2" fill="currentColor" />
+      <path d="M8 26h4a4 4 0 014 4v0a4 4 0 01-4 4H8" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
     </svg>
   ),
 };
