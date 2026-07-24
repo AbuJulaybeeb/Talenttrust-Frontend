@@ -38,6 +38,7 @@ Open [http://localhost:3000](http://localhost:3000).
 This repository keeps user-facing and implementation notes inside the `docs/` folder. Key documentation includes:
 
 - `docs/components/Accessibility.md` — Accessibility testing, a11y helpers, and issue #383 notes
+- `docs/components/Contracts.md` — Contracts components: props, states, and usage for `CreateContractForm`, `ContractCreationForm`, `ContractSummary`, `ContractProgress`, `ActionPanel`, loading skeletons, and both contracts pages
 - `docs/components/ReputationPage.md` — Reputation page implementation and rendering states
 - `docs/data-model.md` — Data model and persistence guide
 - `docs/persistence.md` — Persistence API and local storage patterns

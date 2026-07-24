@@ -41,12 +41,13 @@ Description: Renders a scrollable milestone roster, each showing the title, due 
 Props:
 - `status: 'Active' | 'Completed' | 'Disputed' | 'Pending'`
 - `onSubmitMilestone?: () => void`
-- `onDispute?: () => void`
+- `onDispute?: (reason: string) => void` — receives the trimmed, non-empty dispute reason (max 500 chars); called only after inline form validation passes and the wallet is still connected
 - `onReleaseFunds?: () => void`
 - `onViewSummary?: () => void`
-- `disabledReasons?: Partial<Record<ActionKey, string>>`
+- `disabledReasons?: ActionPanelDisabledReasons` — per-action accessible reason string for `submitMilestone`, `releaseFunds`, `dispute`, and `viewSummary`
 - `errorMessage?: string`
 - `isLoading?: boolean`
+- `disputeFlow?: 'inline' | 'confirm'` — `'inline'` (default) opens a reason textarea in the panel; `'confirm'` uses the legacy `ConfirmDialog`. The detail page passes `disputeFlow="confirm"`.
 
 Description: Chooses appropriate action buttons based on the current contract status. See `docs/components/ActionPanel.md` for keyboard support, disabled-state reasons, loading, and error guidance.
 
