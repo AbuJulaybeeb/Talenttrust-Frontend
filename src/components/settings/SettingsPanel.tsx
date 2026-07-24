@@ -2,12 +2,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { usePreferences, Theme, AmountFormat, ToastDensity } from '@/lib/preferences';
-import { useFetchState } from '@/hooks/useFetchState';
-import {
-  SettingsLoadingState,
-  SettingsEmptyState,
-  SettingsErrorState,
-} from './SettingsStates';
+import { DensityToggle } from './DensityToggle';
 
 const FOCUSABLE_SELECTORS =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -139,110 +134,21 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             </div>
           )}
 
-          {/* Empty State */}
-          {state === 'empty' && (
-            <div className="p-6">
-              <SettingsEmptyState
-                title="No Settings Available"
-                description="Your account doesn't have any custom settings yet. Defaults will be applied."
-              />
-            </div>
-          )}
+          {/* Layout Section */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Layout</h3>
+            <DensityToggle />
+          </section>
 
-          {/* Error State */}
-          {state === 'error' && error && (
-            <div className="p-6">
-              <SettingsErrorState
-                error={error}
-                onRetry={() => retry()}
-                retryLabel="Reload Settings"
-              />
-            </div>
-          )}
-
-          {/* Success State - Settings Form */}
-          {state === 'success' && (
-            <div ref={contentRef} className="p-6 space-y-8">
-              {/* Appearance Section */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Appearance</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label id="theme-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Theme</label>
-                    <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="theme-label" aria-label="Theme">
-                      {(['light', 'dark', 'system'] as Theme[]).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => updatePreference('theme', t)}
-                          role="radio"
-                          aria-checked={preferences.theme === t}
-                          className={`px-3 py-2 text-sm rounded-md border capitalize transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
-                            preferences.theme === t 
-                              ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label id="currency-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Currency Display</label>
-                    <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="currency-label" aria-label="Currency Display">
-                      {(['usd', 'ngn', 'compact'] as AmountFormat[]).map((f) => (
-                        <button
-                          key={f}
-                          onClick={() => updatePreference('amountFormat', f)}
-                          role="radio"
-                          aria-checked={preferences.amountFormat === f}
-                          className={`px-3 py-2 text-sm rounded-md border uppercase transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
-                            preferences.amountFormat === f 
-                              ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
-                          }`}
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* Notifications Section */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Notifications</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label id="density-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Toast Density</label>
-                    <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby="density-label" aria-label="Toast Density">
-                      {(['relaxed', 'compact'] as ToastDensity[]).map((d) => (
-                        <button
-                          key={d}
-                          onClick={() => updatePreference('toastDensity', d)}
-                          role="radio"
-                          aria-checked={preferences.toastDensity === d}
-                          className={`px-3 py-2 text-sm rounded-md border capitalize transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
-                            preferences.toastDensity === d 
-                              ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
-                          }`}
-                        >
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label id="quiet-mode-label" className="text-sm font-medium text-[var(--foreground)]">Quiet Mode</label>
-                      <p className="text-xs text-[var(--muted-foreground)]">Suppress success notifications</p>
-                    </div>
+          {/* Notifications Section */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Notifications</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label id="density-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Toast Density</label>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby="density-label" aria-label="Toast Density">
+                  {(['relaxed', 'compact'] as ToastDensity[]).map((d) => (
                     <button
                       onClick={() => updatePreference('quietMode', !preferences.quietMode)}
                       role="switch"

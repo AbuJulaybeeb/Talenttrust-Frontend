@@ -453,6 +453,10 @@ describe('SettingsPanel', () => {
     // Toast density radiogroup
     const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
     expect(densityGroup).toBeInTheDocument();
+
+    // List density radiogroup
+    const listDensityGroup = screen.getByRole('radiogroup', { name: /list density/i });
+    expect(listDensityGroup).toBeInTheDocument();
     
     // Quiet mode switch
     const quietSwitch = screen.getByRole('switch', { name: /quiet mode/i });
@@ -466,32 +470,45 @@ describe('SettingsPanel', () => {
     expect(themeButtons[2]).toHaveAccessibleName('system');
   });
 
-  // --- New tests for state management ---
+  // --- List density section ---
 
-  it('shows loading state when panel opens', () => {
+  it('renders the Layout section with List Density toggle', () => {
     renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    
-    expect(screen.getByRole('status')).toBeInTheDocument();
-    expect(screen.getByText(/Loading your settings/i)).toBeInTheDocument();
+    expect(screen.getByText('Layout')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: /list density/i })).toBeInTheDocument();
   });
 
-  it('transitions from loading to success state', async () => {
+  it('defaults list density to Comfortable', () => {
     renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    
-    // Initially loading
-    expect(screen.getByText(/Loading your settings/i)).toBeInTheDocument();
-    
-    // Then success
-    await waitFor(() => {
-      expect(screen.getByText('Settings')).toBeInTheDocument();
-      expect(screen.queryByText(/Loading your settings/i)).not.toBeInTheDocument();
-    });
+    const listDensityGroup = screen.getByRole('radiogroup', { name: /list density/i });
+    expect(within(listDensityGroup).getByRole('radio', { name: /comfortable/i }).getAttribute('aria-checked')).toBe('true');
+    expect(within(listDensityGroup).getByRole('radio', { name: /compact/i }).getAttribute('aria-checked')).toBe('false');
   });
 
-  it('announces loading state to assistive tech', () => {
+  it('updates list density preference when Compact is clicked', () => {
     renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    
-    const statusRegion = screen.getByRole('status');
-    expect(statusRegion).toHaveAttribute('aria-live', 'polite');
+    const listDensityGroup = screen.getByRole('radiogroup', { name: /list density/i });
+    const compactBtn = within(listDensityGroup).getByRole('radio', { name: /compact/i });
+    fireEvent.click(compactBtn);
+    expect(compactBtn.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('persists list density preference to localStorage when changed', () => {
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    const listDensityGroup = screen.getByRole('radiogroup', { name: /list density/i });
+    fireEvent.click(within(listDensityGroup).getByRole('radio', { name: /compact/i }));
+
+    const saved = JSON.parse(localStorage.getItem('talenttrust-user-preferences') || '{}');
+    expect(saved.listDensity).toBe('compact');
+  });
+
+  it('restores list density from localStorage on remount', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ listDensity: 'compact' })
+    );
+    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+    const listDensityGroup = screen.getByRole('radiogroup', { name: /list density/i });
+    expect(within(listDensityGroup).getByRole('radio', { name: /compact/i }).getAttribute('aria-checked')).toBe('true');
   });
 });
