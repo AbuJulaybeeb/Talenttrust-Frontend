@@ -50,41 +50,6 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
   const { showError, showSuccess } = useToast();
 
   /**
-   * Copies the current contract page URL to the clipboard with fallback for non-secure contexts.
-   */
-  const handleCopyLink = useCallback(async () => {
-    const url = window.location.href;
-
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(url);
-      } else {
-        // Fallback for non-secure HTTP contexts or older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = url;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-        textArea.remove();
-      }
-
-      showSuccess({
-        title: 'Link copied',
-        description: 'Contract link copied to clipboard.',
-      });
-    } catch {
-      showError({
-        title: 'Failed to copy',
-        description: 'Could not copy contract link to clipboard.',
-      });
-    }
-  }, [showSuccess, showError]);
-
-  /**
    * Maps the resolved contract detail shape into the repository contract shape.
    *
    * The repository stores summary-friendly contract records, so the detail page
@@ -214,28 +179,24 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
 
   /**
    * Persists the confirmed dispute action as a disputed contract.
-   *
-   * `reason` is the trimmed, non-empty, length-capped string ActionPanel's
-   * inline dispute form already validates before calling `onDispute` — it is
-   * surfaced in the success toast description (rendered as plain text, never
-   * as HTML) so the person who opened the dispute can see it was recorded.
-   *
-   * @param reason - Why the dispute was opened, as entered in ActionPanel.
    */
-  const handleDispute = useCallback(
-    (reason: string) => {
-      persistContractStatus(
-        'Disputed',
-        'Dispute opened',
-        `The contract was marked as Disputed and the change was saved. Reason: ${reason}`,
-      );
-    },
-    [persistContractStatus],
-  );
+  const handleDispute = useCallback(() => {
+    persistContractStatus(
+      'Disputed',
+      'Dispute opened',
+      'The contract was marked as Disputed and the change was saved.',
+    );
+  }, [persistContractStatus]);
 
   const handleViewSummary = () => {
     // Replace with summary navigation.
   };
+
+  const handlePrint = useCallback(() => {
+    if (typeof window !== 'undefined' && window.print) {
+      window.print();
+    }
+  }, []);
 
   const status = contractData?.status || 'Active';
 
@@ -254,18 +215,21 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
             />
             <h1 className="mt-2 text-3xl font-semibold text-slate-900">Contract #{id}</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 no-print">
             <button
               type="button"
-              onClick={handleCopyLink}
-              aria-label="Copy contract link"
-              className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+              onClick={handlePrint}
+              aria-label="Print contract"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              Copy Link
+              <svg className="h-4 w-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Print contract
             </button>
             <Link
               href="/contracts"
-              className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400"
+              className="inline-flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               Back to contracts
             </Link>
