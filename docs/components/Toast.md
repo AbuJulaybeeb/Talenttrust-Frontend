@@ -169,45 +169,37 @@ const result = showSuccess({ title: 'Done' });
 if (result === 'suppressed') { /* user preference active */ }
 ```
 
-### `MAX_VISIBLE_TOASTS` and Eviction Order
+### `MAX_VISIBLE_TOASTS` and the Overflow Queue
 
-Source: lines 62-69 (constant), lines 387-395 (eviction logic).
-Test suite: `describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', ...)` (test lines 488-678).
-
-```ts
-const MAX_VISIBLE_TOASTS = 4;   // source line 69
-```
-
-When a new toast would make the queue length exceed `MAX_VISIBLE_TOASTS`,
-the **oldest** toast (index 0) is evicted **before** the new one is appended:
+Test suite: `describe('toast queue (MAX_VISIBLE_TOASTS = 4)', ...)`.
 
 ```ts
-// source lines 387-395
-setToasts((currentToasts) => {
-  const next = [...currentToasts, { ...toast, id, variant }];
-  if (next.length <= MAX_VISIBLE_TOASTS) {
-    return next;
-  }
-  // Evict the oldest toast and cancel its timer.
-  const [evicted, ...remaining] = next;
-  clearToastTimer(evicted.id);
-  return remaining;
-});
+const MAX_VISIBLE_TOASTS = 4;
 ```
 
-The eviction order is **oldest-first (FIFO)**. Tests confirm:
+At most `4` toasts are visible at once. A toast created while at that cap is
+**queued**, not evicted — nothing already on screen is ever pushed off to
+make room, and a queued toast is never silently discarded. Internally the
+provider tracks `{ visible: ToastRecord[], queued: ToastRecord[] }`; only
+`visible` is rendered and only `visible` toasts get auto-dismiss timers.
 
-- Adding 5 toasts: `Toast 1` is gone, `Toast 2`-`Toast 5` are visible
-  (test lines 549-553).
-- Adding 6 toasts: `Toast 1` and `Toast 2` are gone, `Toast 6` is visible
-  (test lines 565-568).
-- The evicted toast's auto-dismiss timer is **cancelled** (`clearToastTimer`)
-  so its callback cannot fire after removal (test lines 571-616,
-  `clearTimeoutSpy` assertion at line 609).
-- The live region after eviction announces the **newest** surviving toast
-  (test lines 618-629).
-- Eviction works the same way when `toastDuration` is `'persistent'`
-  (test lines 1332-1372).
+Queued toasts are promoted into the freed slot when a visible toast is
+dismissed (dismiss button or its own auto-dismiss timer), oldest-first
+**within the same severity**. Error toasts jump ahead of any success toasts
+already sitting in the queue, so a burst of success toasts can never bury or
+drop an error — see `enqueueBySeverity`. Tests confirm:
+
+- Adding 5 toasts: `Toast 1`-`Toast 4` stay visible, `Toast 5` waits in the
+  queue (it is not rendered, and not lost).
+- Dismissing one visible toast promotes the oldest queued toast into view,
+  with a fresh auto-dismiss timer scheduled at promotion time.
+- The live region only ever announces a toast that is actually visible —
+  never one still waiting in the queue.
+- Queuing an error behind an already-queued success promotes the error
+  first once a slot frees up (severity ordering).
+- A large success burst followed by one error still surfaces that error
+  well before the ten successes ahead of it have all cycled through.
+- The same queueing behavior holds when `toastDuration` is `'persistent'`.
 
 ### Density and Stacking Gap
 
@@ -361,10 +353,12 @@ The content formula (source lines 210, 213):
 `${toast.title}${toast.description ? `. ${toast.description}` : ''}`
 ```
 
-Only the **most recent** toast of each variant is announced. When the toast
-stack is replaced by eviction, the live region reflects the newest surviving
-toast (test lines 618-629: after adding 5 toasts the polite region contains
-`'Toast 5'`, not `'Toast 1'`).
+Only the **most recent** toast of each variant is announced — and only
+among toasts that are actually **visible**. A toast still waiting in the
+overflow queue is not announced until it is promoted (see
+"`MAX_VISIBLE_TOASTS` and the Overflow Queue" below): after adding 5 toasts
+in a row, the polite region contains `'Toast 4'`, not `'Toast 5'`, because
+`Toast 5` hasn't been shown yet.
 
 ### Dismiss Button
 
@@ -444,6 +438,6 @@ export function ContractActions() {
 |---------|--------------|
 | `useToast` throws `"must be used within a ToastProvider"` | Component is outside `<ToastProvider>` (source line 533) |
 | Success toasts not appearing | `quietMode` is `true`; `showSuccess` returns `'suppressed'` (source lines 407-408) |
-| Only 4 toasts visible after a burst | `MAX_VISIBLE_TOASTS = 4`; oldest toast evicted (source lines 69, 392-395) |
+| Only 4 toasts visible after a burst | `MAX_VISIBLE_TOASTS = 4`; the rest are queued and promoted as slots free up, not dropped |
 | Toast never dismisses | `toastDuration` is `'persistent'` with no per-call `duration` override (source lines 436-438) |
 | Action button click does not dismiss | Impossible by design: `onDismiss` is called unconditionally after `onClick` (source lines 165-168) |

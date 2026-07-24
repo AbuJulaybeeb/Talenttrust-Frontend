@@ -488,7 +488,7 @@ describe('default duration', () => {
   });
 });
 
-describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
+describe('toast queue (MAX_VISIBLE_TOASTS = 4)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -540,7 +540,7 @@ describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
     expect(screen.getAllByRole('status')).toHaveLength(4);
   });
 
-  it('evicts the oldest toast when over cap, keeping only MAX_VISIBLE_TOASTS', () => {
+  it('queues overflow instead of evicting, keeping only MAX_VISIBLE_TOASTS visible', () => {
     render(
       <ToastProvider>
         <MultiToastHarness count={5} />
@@ -549,14 +549,15 @@ describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
 
-    const visible = screen.getAllByRole('status');
-    expect(visible).toHaveLength(4);
-    expect(screen.queryAllByText('Toast 1', { selector: 'p' })).toHaveLength(0);
-    expect(screen.getAllByText('Toast 2', { selector: 'p' })).toHaveLength(1);
-    expect(screen.getAllByText('Toast 5', { selector: 'p' })).toHaveLength(1);
+    // Still exactly 4 visible, but they are the *first* four created —
+    // nothing already on screen gets pushed off to make room.
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+    expect(screen.getAllByText('Toast 1', { selector: 'p' })).toHaveLength(1);
+    expect(screen.getAllByText('Toast 4', { selector: 'p' })).toHaveLength(1);
+    expect(screen.queryAllByText('Toast 5', { selector: 'p' })).toHaveLength(0);
   });
 
-  it('always keeps the newest toast after multiple over-cap additions', () => {
+  it('keeps every toast from a large over-cap burst somewhere (visible or queued), never dropping one', () => {
     render(
       <ToastProvider>
         <MultiToastHarness count={6} />
@@ -566,80 +567,23 @@ describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
     fireEvent.click(screen.getByRole('button', { name: /add 6 toasts/i }));
 
     expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('Toast 1', { selector: 'p' })).toHaveLength(0);
-    expect(screen.queryAllByText('Toast 2', { selector: 'p' })).toHaveLength(0);
-    expect(screen.getAllByText('Toast 6', { selector: 'p' })).toHaveLength(1);
+    expect(screen.getAllByText('Toast 1', { selector: 'p' })).toHaveLength(1);
+    expect(screen.getAllByText('Toast 4', { selector: 'p' })).toHaveLength(1);
+    // 5 and 6 are queued, not gone — dismissing visible toasts below
+    // confirms they are still there and get promoted in order.
+    expect(screen.queryAllByText('Toast 5', { selector: 'p' })).toHaveLength(0);
+    expect(screen.queryAllByText('Toast 6', { selector: 'p' })).toHaveLength(0);
   });
 
-  it('clears the evicted toast timer so it cannot auto-dismiss after eviction', async () => {
+  it('promotes the oldest queued toast into view, with a working auto-dismiss timer, when a visible toast is dismissed', async () => {
     function SequentialHarness() {
       const { showSuccess } = useToast();
       return (
         <>
           <button
             onClick={() => {
-              for (let i = 1; i <= 4; i++) {
-                showSuccess({ title: `SeqToast ${i}`, duration: 5000 });
-              }
-            }}
-            type="button"
-          >
-            Add 4
-          </button>
-          <button
-            onClick={() => showSuccess({ title: 'SeqToast 5', duration: 5000 })}
-            type="button"
-          >
-            Add 5th
-          </button>
-        </>
-      );
-    }
-
-    render(
-      <ToastProvider>
-        <SequentialHarness />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /add 4/i }));
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-
-    const clearTimeoutSpy = jest.spyOn(window, 'clearTimeout');
-
-    fireEvent.click(screen.getByRole('button', { name: /add 5th/i }));
-
-    expect(clearTimeoutSpy).toHaveBeenCalled();
-
-    expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('SeqToast 1', { selector: 'p' })).toHaveLength(0);
-    expect(screen.getAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(1);
-
-    clearTimeoutSpy.mockRestore();
-  });
-
-  it('announces the newest toast in the live region after eviction', () => {
-    render(
-      <ToastProvider>
-        <MultiToastHarness count={5} />
-      </ToastProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
-
-    const politeRegion = document.querySelector('[aria-live="polite"]');
-    expect(politeRegion).toHaveTextContent('Toast 5');
-  });
-
-  it('does not affect pause-on-hover after eviction', async () => {
-    function SingleEvictHarness() {
-      const { showSuccess } = useToast();
-      return (
-        <>
-          <button
-            onClick={() => {
               for (let i = 1; i <= 5; i++) {
-                showSuccess({ title: `T${i}`, duration: 2000 });
+                showSuccess({ title: `SeqToast ${i}`, duration: 5000 });
               }
             }}
             type="button"
@@ -652,11 +596,72 @@ describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
 
     render(
       <ToastProvider>
-        <SingleEvictHarness />
+        <SequentialHarness />
       </ToastProvider>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /add 5/i }));
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+    expect(screen.queryAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(0);
+
+    // Dismiss the oldest visible toast — this should free a slot for the
+    // queued fifth toast, not just shrink the visible count.
+    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
+
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+    expect(screen.queryAllByText('SeqToast 1', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(1);
+
+    // The promoted toast gets its own timer, scheduled fresh at promotion time.
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryAllByText('SeqToast 5', { selector: 'p' })).toHaveLength(0);
+    });
+  });
+
+  it('announces the toast that is actually visible, not one still waiting in the queue', () => {
+    render(
+      <ToastProvider>
+        <MultiToastHarness count={5} />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5 toasts/i }));
+
+    // Toast 5 hasn't been shown yet, so it must not be announced either.
+    const politeRegion = document.querySelector('[aria-live="polite"]');
+    expect(politeRegion).toHaveTextContent('Toast 4');
+    expect(politeRegion).not.toHaveTextContent('Toast 5');
+  });
+
+  it('does not affect pause-on-hover for a toast promoted from the queue', async () => {
+    function SingleQueueHarness() {
+      const { showSuccess } = useToast();
+      return (
+        <button
+          onClick={() => {
+            for (let i = 1; i <= 5; i++) {
+              showSuccess({ title: `T${i}`, duration: 2000 });
+            }
+          }}
+          type="button"
+        >
+          Add 5
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <SingleQueueHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5/i }));
+    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
 
     const t5Para = screen.getAllByText('T5', { selector: 'p' })[0];
     const t5 = t5Para.closest('[role="status"]')!;
@@ -677,6 +682,155 @@ describe('maxVisible cap (MAX_VISIBLE_TOASTS = 4)', () => {
     await waitFor(() => {
       expect(screen.queryAllByText('T5', { selector: 'p' })).toHaveLength(0);
     });
+  });
+
+  it('promotes a queued error ahead of a success toast that was queued earlier (severity ordering)', () => {
+    function SeverityHarness() {
+      const { showSuccess, showError } = useToast();
+      return (
+        <>
+          <button
+            onClick={() => {
+              for (let i = 1; i <= 4; i++) {
+                showSuccess({ title: `Fill ${i}`, duration: 10000 });
+              }
+              // Both of these are created over-cap: a success first, then an
+              // error. Without severity ordering the success would be
+              // promoted first since it was queued first (FIFO).
+              showSuccess({ title: 'Queued success', duration: 10000 });
+              showError({ title: 'Queued error', duration: 10000 });
+            }}
+            type="button"
+          >
+            Fill and queue
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <SeverityHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /fill and queue/i }));
+    expect(screen.queryAllByText('Queued success', { selector: 'p' })).toHaveLength(0);
+    expect(screen.queryAllByText('Queued error', { selector: 'p' })).toHaveLength(0);
+
+    // Free one slot — the error should be promoted, not the
+    // earlier-queued success.
+    fireEvent.click(screen.getAllByLabelText(/dismiss success notification/i)[0]);
+
+    expect(screen.getAllByText('Queued error', { selector: 'p' })).toHaveLength(1);
+    expect(screen.queryAllByText('Queued success', { selector: 'p' })).toHaveLength(0);
+  });
+
+  it('never silently drops a queued error toast under a large success burst', () => {
+    function BigBurstHarness() {
+      const { showSuccess, showError } = useToast();
+      return (
+        <button
+          onClick={() => {
+            for (let i = 1; i <= 10; i++) {
+              showSuccess({ title: `Burst ${i}`, duration: 10000 });
+            }
+            showError({ title: 'Important failure', duration: 10000 });
+          }}
+          type="button"
+        >
+          Trigger burst plus error
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <BigBurstHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger burst plus error/i }));
+
+    // Not visible yet (10 success toasts are ahead of it in creation order,
+    // but only 4 fit), and critically — not lost either.
+    expect(screen.queryAllByText('Important failure', { selector: 'p' })).toHaveLength(0);
+
+    // Dismiss visible toasts one at a time; the error must surface well
+    // before all 10 successes have cycled through, because it jumps the
+    // success queue.
+    for (let i = 0; i < 4; i += 1) {
+      fireEvent.click(screen.getAllByLabelText(/dismiss/i)[0]);
+    }
+
+    expect(screen.getAllByText('Important failure', { selector: 'p' })).toHaveLength(1);
+  });
+
+  it('queues an error directly (no success ahead of it) when the queue was empty', () => {
+    function DirectErrorHarness() {
+      const { showSuccess, showError } = useToast();
+      return (
+        <button
+          onClick={() => {
+            for (let i = 1; i <= 4; i++) {
+              showSuccess({ title: `Fill ${i}`, duration: 10000 });
+            }
+            showError({ title: 'First queued error', duration: 10000 });
+          }}
+          type="button"
+        >
+          Fill then queue error
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <DirectErrorHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /fill then queue error/i }));
+    expect(screen.queryAllByText('First queued error', { selector: 'p' })).toHaveLength(0);
+
+    fireEvent.click(screen.getAllByLabelText(/dismiss/i)[0]);
+
+    expect(screen.getAllByText('First queued error', { selector: 'p' })).toHaveLength(1);
+  });
+
+  it('does not over-promote if a toast is dismissed twice (dismiss button and its own timer racing)', () => {
+    function RaceHarness() {
+      const { showSuccess, dismissToast } = useToast();
+      return (
+        <button
+          onClick={() => {
+            const ids: string[] = [];
+            for (let i = 1; i <= 5; i++) {
+              ids.push(showSuccess({ title: `Race ${i}`, duration: 10000 }));
+            }
+            // Simulate the dismiss button and the auto-dismiss timer both
+            // resolving for the same already-visible toast.
+            dismissToast(ids[0]);
+            dismissToast(ids[0]);
+          }}
+          type="button"
+        >
+          Trigger race
+        </button>
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <RaceHarness />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /trigger race/i }));
+
+    // Exactly one queued toast should have been promoted, not two —
+    // the visible count must stay at the cap.
+    expect(screen.getAllByRole('status')).toHaveLength(4);
   });
 });
 
@@ -1332,7 +1486,7 @@ describe('toastDuration preference', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('MAX_VISIBLE_TOASTS eviction still works with persistent preference', () => {
+  it('MAX_VISIBLE_TOASTS queueing still works with persistent preference', () => {
     localStorage.setItem(
       'talenttrust-user-preferences',
       JSON.stringify({ toastDuration: 'persistent' }),
@@ -1364,14 +1518,17 @@ describe('toastDuration preference', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /add toasts/i }));
 
-    // After adding 5, only 4 should be visible (oldest evicted).
+    // After adding 5, only 4 should be visible — but they are the first
+    // four (PToast 1 included), not evicted; the 5th is queued.
     expect(screen.getAllByRole('status')).toHaveLength(4);
-    expect(screen.queryAllByText('PToast 1', { selector: 'p' })).toHaveLength(0);
-    expect(screen.getAllByText('PToast 5', { selector: 'p' })).toHaveLength(1);
+    expect(screen.getAllByText('PToast 1', { selector: 'p' })).toHaveLength(1);
+    expect(screen.queryAllByText('PToast 5', { selector: 'p' })).toHaveLength(0);
 
-    // Advance time — none should auto-dismiss (all persistent).
+    // Advance time — none should auto-dismiss (all persistent), so the
+    // queued toast never gets a chance to be promoted here.
     act(() => { jest.advanceTimersByTime(60000); });
     expect(screen.getAllByRole('status')).toHaveLength(4);
+    expect(screen.queryAllByText('PToast 5', { selector: 'p' })).toHaveLength(0);
   });
 });
 

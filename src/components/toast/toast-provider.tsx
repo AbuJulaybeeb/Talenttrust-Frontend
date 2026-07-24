@@ -67,12 +67,39 @@ const DURATION_MAP: Readonly<Record<ToastDuration, number | null>> = {
 
 /**
  * Maximum number of toasts that may be visible at the same time.
- * When a new toast would exceed this cap the oldest visible toast is
- * evicted (its auto-dismiss timer is cancelled) before the new one is
- * appended.  This prevents a burst of wallet/payout events from stacking
- * toasts past the bottom of the viewport and burying the dismiss buttons.
+ * When a new toast would exceed this cap it is queued instead of shown;
+ * queued toasts are promoted into view (oldest-first within the same
+ * severity) as visible toasts are dismissed. This prevents a burst of
+ * wallet/payout events from stacking toasts past the bottom of the
+ * viewport and burying the dismiss buttons, without ever silently
+ * dropping a toast — error toasts in particular always eventually show.
  */
 const MAX_VISIBLE_TOASTS = 4;
+
+type ToastQueueState = {
+  visible: ToastRecord[];
+  queued: ToastRecord[];
+};
+
+/**
+ * Inserts a toast into a queue, keeping error toasts ahead of queued
+ * success toasts (severity ordering) while preserving FIFO order within
+ * each severity. This is what lets an error toast reach the front of the
+ * line — and therefore get shown — sooner than success toasts that were
+ * queued earlier, without ever discarding anything.
+ */
+function enqueueBySeverity(queue: ToastRecord[], toast: ToastRecord): ToastRecord[] {
+  if (toast.variant !== 'error') {
+    return [...queue, toast];
+  }
+
+  const firstSuccessIndex = queue.findIndex((queued) => queued.variant !== 'error');
+  if (firstSuccessIndex === -1) {
+    return [...queue, toast];
+  }
+
+  return [...queue.slice(0, firstSuccessIndex), toast, ...queue.slice(firstSuccessIndex)];
+}
 
 /**
  * Generates a unique toast ID without mutating refs during render.
@@ -398,10 +425,13 @@ type ToastTimerState = {
  * | `'long'`       | 10000 ms  | Longer read time                |
  * | `'persistent'` | `null`    | No timer; manual dismiss only   |
  *
- * ## Eviction
+ * ## Visible cap and queueing
  *
- * A maximum of `4` toasts are visible at once. If a fifth is created, the
- * oldest is evicted to make room.
+ * A maximum of `4` toasts are visible at once. Anything created beyond that
+ * cap is queued rather than dropped, and gets promoted into view as soon as
+ * a visible toast is dismissed (auto or manual). Error toasts queued behind
+ * success toasts are promoted first — a burst of successes can never bury or
+ * silently discard an error.
  *
  * ## Action button
  *
@@ -410,11 +440,35 @@ type ToastTimerState = {
  * toast. The label is always rendered as a plain text node to prevent XSS.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<ToastRecord[]>([]);
+  const [queueState, setQueueState] = useState<ToastQueueState>({ visible: [], queued: [] });
+  const toasts = queueState.visible;
   const toastTimersRef = useRef<Record<string, ToastTimerState>>({});
 
+  /**
+   * Dismisses a toast and, if it was actually visible, promotes the next
+   * queued toast into the freed slot — queue order already accounts for
+   * severity, so an error toast waiting in the queue is promoted ahead of
+   * any success toasts queued before it.
+   *
+   * The `wasVisible` guard matters: a dismiss button click and its
+   * auto-dismiss timer can race (e.g. the timer fires the same tick the
+   * user clicks dismiss), so this can be called twice for the same id.
+   * Without the guard, the second call would see a full visible list, a
+   * non-empty queue, and incorrectly promote another toast without
+   * actually freeing a slot — pushing the visible count past the cap.
+   */
   const dismissToast = useCallback((id: string) => {
-    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
+    setQueueState((current) => {
+      const wasVisible = current.visible.some((toast) => toast.id === id);
+      const remainingVisible = current.visible.filter((toast) => toast.id !== id);
+
+      if (!wasVisible || current.queued.length === 0) {
+        return { visible: remainingVisible, queued: current.queued };
+      }
+
+      const [promoted, ...restQueue] = current.queued;
+      return { visible: [...remainingVisible, promoted], queued: restQueue };
+    });
   }, []);
 
   /**
@@ -513,21 +567,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const createToast = useCallback(
     (variant: ToastVariant, toast: ToastInput, durationMs: number | null) => {
       const id = generateToastId();
+      const record: ToastRecord = { ...toast, duration: durationMs ?? undefined, id, variant };
 
-      setToasts((currentToasts) => {
-        const next = [...currentToasts, { ...toast, duration: durationMs ?? undefined, id, variant }];
-        if (next.length <= MAX_VISIBLE_TOASTS) {
-          return next;
+      setQueueState((current) => {
+        if (current.visible.length < MAX_VISIBLE_TOASTS) {
+          return { visible: [...current.visible, record], queued: current.queued };
         }
-        // Evict the oldest toast and cancel its timer.
-        const [evicted, ...remaining] = next;
-        clearToastTimer(evicted.id);
-        return remaining;
+        // At capacity — queue it instead of evicting anything. Error toasts
+        // jump ahead of already-queued success toasts (severity ordering);
+        // nothing is ever dropped.
+        return { visible: current.visible, queued: enqueueBySeverity(current.queued, record) };
       });
 
       return id;
     },
-    [clearToastTimer],
+    [],
   );
 
   const { preferences } = usePreferences();
