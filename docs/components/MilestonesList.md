@@ -67,6 +67,8 @@ An accessible, dismissible banner is surfaced above the milestones list when the
 
 ## Testing
 
+### MilestonesList
+
 Comprehensive test coverage is provided in [MilestonesList.test.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/__tests__/MilestonesList.test.tsx):
 - Renders banner when due-soon milestones exist.
 - Correct pluralization (e.g., "1 milestone is due..." vs "2 milestones are due...").
@@ -76,9 +78,23 @@ Comprehensive test coverage is provided in [MilestonesList.test.tsx](file:///c:/
 - Dismiss interaction and focus restoration checking.
 - Accessibility validation using `axe`.
 
-Run tests with:
 ```bash
 npx jest src/components/__tests__/MilestonesList.test.tsx
+```
+
+### MilestoneFilter
+
+Comprehensive test coverage is provided in [MilestoneFilter.test.tsx](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/components/__tests__/MilestoneFilter.test.tsx):
+- Every status option renders as a radio input inside a `role="radiogroup"`.
+- The currently selected status is marked `checked`; all others are unchecked.
+- Pointer (click) selection calls `onChange` with the correct value exactly once.
+- Keyboard navigation via ArrowDown, ArrowUp, ArrowRight, and ArrowLeft moves between options and fires `onChange` exactly once per step.
+- The `aria-live="polite"` region announces result counts with correct singular/plural wording at 0, 1, and 2+ results.
+- The announcement uses "Showing all …" phrasing when the filter is `'All'` and lowers the status name for specific filters.
+- Axe accessibility audit passes (uses `assertNoA11yViolations` from `@/test-utils/a11y`).
+
+```bash
+npx jest src/components/__tests__/MilestoneFilter.test.tsx
 ```
 
 ## URL Status Filtering
