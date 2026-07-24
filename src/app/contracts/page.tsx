@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
-import BackToTop from '../../components/BackToTop';
+import React, { useState, useCallback, useMemo } from 'react';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
+import ContractStatusFilter, {
+  type ContractStatusValue,
+} from '@/components/contracts/ContractStatusFilter';
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 
@@ -14,26 +16,13 @@ const ContractsPage: React.FC = () => {
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
 
-  // Pagination, search, and filter states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  // Filtered contracts
-  const filteredContracts = contracts.filter((contract) => {
-    const matchesSearch = contract.contractName
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || contract.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  // Reset pagination to first page when search or filter changes
-  React.useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [searchTerm, statusFilter]);
+  /** Client-side filtered contracts derived from the active status filter. */
+  const filteredContracts = useMemo(() => {
+    if (statusFilter === 'All') return contracts;
+    return contracts.filter((c) => c.status === statusFilter);
+  }, [contracts, statusFilter]);
 
   /**
    * Opens the contract creation form modal.
@@ -122,23 +111,30 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
-          {/* TODO: Replace with a proper ContractSummary list component. */}
-          <ul className="space-y-4">
-            {contracts.map((contract, idx) => (
-              <li
-                key={`${contract.contractName}-${idx}`}
-                className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <p className="font-semibold text-slate-900">{contract.contractName}</p>
-                <p className="text-sm text-slate-500">
-                  {contract.status} · Created {contract.createdAt}
-                </p>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 flex justify-end">
-            <BackToTop focusTargetRef={headingRef} />
-          </div>
+
+          <ContractStatusFilter
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            resultCount={filteredContracts.length}
+          />
+
+          {filteredContracts.length === 0 ? (
+            <p className="text-sm text-slate-500">No contracts match the selected filter.</p>
+          ) : (
+            <ul className="space-y-4">
+              {filteredContracts.map((contract, idx) => (
+                <li
+                  key={`${contract.contractName}-${idx}`}
+                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <p className="font-semibold text-slate-900">{contract.contractName}</p>
+                  <p className="text-sm text-slate-500">
+                    {contract.status} · Created {contract.createdAt}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
 

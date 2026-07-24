@@ -518,122 +518,181 @@ describe('ContractsPage', () => {
 
     expect(mockListContracts).toHaveBeenCalled();
   });
+});
 
-  describe('Pagination & Filtering', () => {
-    const buildMockContracts = (count: number) => {
-      return Array.from({ length: count }, (_, i) => ({
-        contractName: `Contract ${i + 1}`,
-        parties: [],
-        totalValue: 1000 * (i + 1),
-        currency: 'USD',
-        status: i % 2 === 0 ? ('Active' as const) : ('Pending' as const),
-        createdAt: 'Jan 1, 2025',
-        milestoneCount: 0,
-      }));
-    };
+// ---------------------------------------------------------------------------
+// Contract status filter integration
+// ---------------------------------------------------------------------------
 
-    it('renders initial page of contracts correctly (PAGE_SIZE = 5)', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(12));
-      render(<ContractsPage />);
+describe('ContractStatusFilter integration', () => {
+  const MIXED_CONTRACTS = [
+    {
+      contractName: 'Alpha Project',
+      parties: [],
+      totalValue: 1000,
+      currency: 'USD',
+      status: 'Active' as const,
+      createdAt: 'Jan 1, 2025',
+      milestoneCount: 1,
+    },
+    {
+      contractName: 'Beta Project',
+      parties: [],
+      totalValue: 2000,
+      currency: 'USD',
+      status: 'Completed' as const,
+      createdAt: 'Feb 1, 2025',
+      milestoneCount: 3,
+    },
+    {
+      contractName: 'Gamma Project',
+      parties: [],
+      totalValue: 3000,
+      currency: 'USD',
+      status: 'Pending' as const,
+      createdAt: 'Mar 1, 2025',
+      milestoneCount: 2,
+    },
+    {
+      contractName: 'Delta Project',
+      parties: [],
+      totalValue: 4000,
+      currency: 'USD',
+      status: 'Active' as const,
+      createdAt: 'Apr 1, 2025',
+      milestoneCount: 4,
+    },
+    {
+      contractName: 'Epsilon Project',
+      parties: [],
+      totalValue: 5000,
+      currency: 'USD',
+      status: 'Disputed' as const,
+      createdAt: 'May 1, 2025',
+      milestoneCount: 1,
+    },
+  ];
 
-      // Verify that only the first 5 contracts are rendered
-      expect(screen.getByText('Contract 1')).toBeInTheDocument();
-      expect(screen.getByText('Contract 5')).toBeInTheDocument();
-      expect(screen.queryByText('Contract 6')).not.toBeInTheDocument();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockListContracts.mockReturnValue([...MIXED_CONTRACTS]);
+    mockIsValidStellarAddress.mockReturnValue(true);
+  });
 
-      // Verify page status text
-      expect(screen.getByText('Showing 5 of 12 contracts')).toBeInTheDocument();
+  it('renders the filter when contracts exist', () => {
+    render(<ContractsPage />);
 
-      // Verify "Load More" button is visible
-      const loadMoreBtn = screen.getByRole('button', { name: /load more/i });
-      expect(loadMoreBtn).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).toBeInTheDocument();
+  });
 
-    it('reveals the next batch of contracts when Load More is clicked', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(12));
-      render(<ContractsPage />);
+  it('does not render the filter when there are no contracts', () => {
+    mockListContracts.mockReturnValue([]);
+    render(<ContractsPage />);
 
-      const loadMoreBtn = screen.getByRole('button', { name: /load more/i });
-      fireEvent.click(loadMoreBtn);
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
+  });
 
-      // Now contracts 1-10 should be visible
-      expect(screen.getByText('Contract 6')).toBeInTheDocument();
-      expect(screen.getByText('Contract 10')).toBeInTheDocument();
-      expect(screen.queryByText('Contract 11')).not.toBeInTheDocument();
-      expect(screen.getByText('Showing 10 of 12 contracts')).toBeInTheDocument();
+  it('defaults to "All" and shows all contracts', () => {
+    render(<ContractsPage />);
 
-      // Click Load More again to load the remaining 2
-      fireEvent.click(loadMoreBtn);
-      expect(screen.getByText('Contract 11')).toBeInTheDocument();
-      expect(screen.getByText('Contract 12')).toBeInTheDocument();
-      expect(screen.getByText('Showing 12 of 12 contracts')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
+    expect(screen.getByText('Delta Project')).toBeInTheDocument();
+    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
+  });
 
-      // "Load More" button should be removed from document as no more contracts are left
-      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
-    });
+  it('filters to show only Active contracts', () => {
+    render(<ContractsPage />);
 
-    it('resets pagination to page one when search query changes', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(12));
-      render(<ContractsPage />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
 
-      // Click load more to show 10 contracts
-      fireEvent.click(screen.getByRole('button', { name: /load more/i }));
-      expect(screen.getByText('Contract 10')).toBeInTheDocument();
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+    expect(screen.getByText('Delta Project')).toBeInTheDocument();
+    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gamma Project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Epsilon Project')).not.toBeInTheDocument();
+  });
 
-      // Change search term
-      const searchInput = screen.getByPlaceholderText(/search contracts\.\.\./i);
-      fireEvent.change(searchInput, { target: { value: 'Contract' } });
+  it('filters to show only Completed contracts', () => {
+    render(<ContractsPage />);
 
-      // Count resets back to PAGE_SIZE (5)
-      expect(screen.getByText('Showing 5 of 12 contracts')).toBeInTheDocument();
-    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
 
-    it('resets pagination to page one when status filter changes', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(12));
-      render(<ContractsPage />);
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
 
-      // Click load more to show 10 contracts
-      fireEvent.click(screen.getByRole('button', { name: /load more/i }));
-      expect(screen.getByText('Contract 10')).toBeInTheDocument();
+  it('filters to show only Pending contracts', () => {
+    render(<ContractsPage />);
 
-      // Change status filter
-      const filterSelect = screen.getByLabelText(/filter by status/i);
-      fireEvent.change(filterSelect, { target: { value: 'Active' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Pending' }));
 
-      // There are 6 active contracts (i % 2 === 0: 1, 3, 5, 7, 9, 11)
-      // Since it resets to page one, only 5 of 6 are shown
-      expect(screen.getByText('Showing 5 of 6 contracts')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
 
-    it('handles edge case: fewer contracts than one page', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(3));
-      render(<ContractsPage />);
+  it('filters to show only Disputed contracts', () => {
+    render(<ContractsPage />);
 
-      expect(screen.getByText('Contract 1')).toBeInTheDocument();
-      expect(screen.getByText('Contract 3')).toBeInTheDocument();
-      expect(screen.getByText('Showing 3 of 3 contracts')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
-    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Disputed' }));
 
-    it('handles edge case: exact page boundary', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(5));
-      render(<ContractsPage />);
+    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
 
-      expect(screen.getByText('Contract 1')).toBeInTheDocument();
-      expect(screen.getByText('Contract 5')).toBeInTheDocument();
-      expect(screen.getByText('Showing 5 of 5 contracts')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
-    });
+  it('shows empty message when no contracts match the filter', () => {
+    render(<ContractsPage />);
 
-    it('handles empty filtered results', () => {
-      mockListContracts.mockReturnValue(buildMockContracts(5));
-      render(<ContractsPage />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Paid' }));
 
-      const searchInput = screen.getByPlaceholderText(/search contracts\.\.\./i);
-      fireEvent.change(searchInput, { target: { value: 'Non-existent' } });
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
 
-      expect(screen.getByText('No contracts match your search or filter.')).toBeInTheDocument();
-      expect(screen.getByText('Showing 0 of 0 contracts')).toBeInTheDocument();
-    });
+  it('switches back to showing all contracts when "All" is selected', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+  });
+
+  it('announces the filtered count to screen readers', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+
+    expect(screen.getByText('Showing 2 active contracts')).toBeInTheDocument();
+  });
+
+  it('does not show filter or list in empty state', () => {
+    mockListContracts.mockReturnValue([]);
+    render(<ContractsPage />);
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('No contracts match the selected filter.')).not.toBeInTheDocument();
+  });
+
+  it('filter does not appear while the creation form is open', () => {
+    mockListContracts.mockReturnValue(MIXED_CONTRACTS);
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
   });
 });
