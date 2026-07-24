@@ -32,7 +32,8 @@ The inline dispute form also re-checks the wallet connection at submit time befo
 - Visible focus rings use high-contrast Tailwind `focus-visible:outline` utilities and are not removed in any state.
 - Actions are rendered in contract workflow order: submit milestone, release funds, dispute, then summary when applicable.
 - Submit Milestone opens the shared confirmation dialog before invoking the callback, then shows a success toast once the action is confirmed.
-- Dispute opens an inline reason form. The submitted reason is validated using the shared `validateDisputeReason` utility from [disputeReason.ts](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/lib/disputeReason.ts), which enforces `DISPUTE_REASON_MAX_LENGTH` (500 characters). The submitted reason is trimmed, must be non-empty, and is only passed to `onDispute` while a wallet address is still connected.
+- Dispute opens an inline reason form. The submitted reason is validated using the shared `validateDisputeReason` utility from [`src/lib/disputeReason.ts`](../../src/lib/disputeReason.ts), which enforces `DISPUTE_REASON_MAX_LENGTH` (500 characters). The submitted reason is trimmed, must be non-empty, and is only passed to `onDispute` while a wallet address is still connected.
+- **Consuming the reason:** `src/app/contracts/[id]/page.tsx`'s `handleDispute` receives this reason as its argument and includes it in the success toast description shown after the dispute is persisted. It's rendered through JSX (`{toast.description}`), so it's always plain text — never interpreted as HTML — no matter what the reason contains.
 - Unavailable actions stay visible as disabled buttons with an accessible reason. Use `disabledReasons` for states such as no wallet, missing permissions, pending API responses, or unmet milestone conditions.
 - Loading states disable all visible actions and describe that contract data is still loading.
 - Error states are announced through `role="alert"` without moving focus or changing the action order.
@@ -78,7 +79,7 @@ import ActionPanel from '@/components/ActionPanel';
 export default function ContractDetail({ contractData, isLoading, errorMessage }) {
   const handleSubmitMilestone = () => { /* ... */ };
   const handleReleaseFunds = () => { /* ... */ };
-  const handleDispute = () => { /* ... */ };
+  const handleDispute = (reason: string) => { /* ... */ };
   const handleViewSummary = () => { /* ... */ };
 
   return (

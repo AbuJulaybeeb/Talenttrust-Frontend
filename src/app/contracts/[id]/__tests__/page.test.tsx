@@ -440,6 +440,32 @@ describe('existing contract detail page behaviour', () => {
     );
     expect(screen.queryByRole('button', { name: /release funds to the contractor/i })).not.toBeInTheDocument();
     expect(await screen.findByText('Dispute opened')).toBeInTheDocument();
+    expect(
+      screen.getByText('The contract was marked as Disputed and the change was saved. Reason: Dispute reason'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders a dispute reason containing markup as literal text, never as HTML', async () => {
+    const user = userEvent.setup();
+    const unsafeReason = '<script>window.__pwned = true</script>';
+
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /open a dispute for this contract/i }));
+    const textarea = screen.getByRole('textbox', { name: /reason/i });
+    await user.type(textarea, unsafeReason);
+    await user.click(screen.getByRole('button', { name: /^confirm dispute$/i }));
+
+    const toastDescription = await screen.findByText((_, node) =>
+      node?.textContent === `The contract was marked as Disputed and the change was saved. Reason: ${unsafeReason}`,
+    );
+    // The literal string is present as text content...
+    expect(toastDescription).toBeInTheDocument();
+    // ...but was never parsed as markup: no <script> element was created for
+    // it anywhere on the page, and the global it would have set is absent.
+    const scriptTags = Array.from(document.querySelectorAll('script'));
+    expect(scriptTags.some((tag) => tag.textContent?.includes('__pwned'))).toBe(false);
+    expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined();
   });
 
   it('keeps destructive actions disabled when the wallet is disconnected', async () => {

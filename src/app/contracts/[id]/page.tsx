@@ -179,14 +179,24 @@ const ContractDetailPageContent = ({ id }: { id: string }) => {
 
   /**
    * Persists the confirmed dispute action as a disputed contract.
+   *
+   * `reason` is the trimmed, non-empty, length-capped string ActionPanel's
+   * inline dispute form already validates before calling `onDispute` — it is
+   * surfaced in the success toast description (rendered as plain text, never
+   * as HTML) so the person who opened the dispute can see it was recorded.
+   *
+   * @param reason - Why the dispute was opened, as entered in ActionPanel.
    */
-  const handleDispute = useCallback(() => {
-    persistContractStatus(
-      'Disputed',
-      'Dispute opened',
-      'The contract was marked as Disputed and the change was saved.',
-    );
-  }, [persistContractStatus]);
+  const handleDispute = useCallback(
+    (reason: string) => {
+      persistContractStatus(
+        'Disputed',
+        'Dispute opened',
+        `The contract was marked as Disputed and the change was saved. Reason: ${reason}`,
+      );
+    },
+    [persistContractStatus],
+  );
 
   const handleViewSummary = () => {
     // Replace with summary navigation.
