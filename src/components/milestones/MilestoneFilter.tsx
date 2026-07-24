@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 /**
  * The set of statuses a user can filter milestones by.
@@ -17,6 +17,16 @@ const FILTER_OPTIONS: MilestoneStatusFilter[] = [
   'Paid',
   'Disputed',
 ];
+
+const ANNOUNCEMENT_DEBOUNCE_MS = 250;
+
+const getResultAnnouncement = (selected: MilestoneStatusFilter, resultCount: number) => {
+  const noun = resultCount === 1 ? 'milestone' : 'milestones';
+
+  return selected === 'All'
+    ? `Showing all ${resultCount} ${noun}`
+    : `Showing ${resultCount} ${selected.toLowerCase()} ${noun}`;
+};
 
 export interface MilestoneFilterProps {
   /** The currently active filter. */
@@ -54,6 +64,22 @@ export interface MilestoneFilterProps {
  * ```
  */
 const MilestoneFilter = ({ selected, onChange, resultCount }: MilestoneFilterProps) => {
+  const [announcement, setAnnouncement] = useState('');
+  const hasMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAnnouncement(getResultAnnouncement(selected, resultCount));
+    }, ANNOUNCEMENT_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [selected, resultCount]);
+
   return (
     <div className="mb-6">
       <fieldset>
@@ -94,15 +120,14 @@ const MilestoneFilter = ({ selected, onChange, resultCount }: MilestoneFilterPro
         </div>
       </fieldset>
 
-      {/* aria-live region: announces result count to screen readers on filter change */}
       <p
         className="sr-only"
+        role="status"
+        aria-label="Milestone filter updates"
         aria-live="polite"
         aria-atomic="true"
       >
-        {selected === 'All'
-          ? `Showing all ${resultCount} milestone${resultCount !== 1 ? 's' : ''}`
-          : `Showing ${resultCount} ${selected.toLowerCase()} milestone${resultCount !== 1 ? 's' : ''}`}
+        {announcement}
       </p>
     </div>
   );

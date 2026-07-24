@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import MilestoneFilter, { type MilestoneStatusFilter } from '../milestones/MilestoneFilter';
 
@@ -13,6 +13,10 @@ const FILTER_OPTIONS: MilestoneStatusFilter[] = [
 ];
 
 describe('MilestoneFilter', () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+  });
+
   it('renders every milestone status as a radio option', () => {
     render(
       <MilestoneFilter
@@ -63,7 +67,7 @@ describe('MilestoneFilter', () => {
     expect(handleChange).toHaveBeenCalledWith('Active');
   });
 
-  it('announces the all-status result count in a polite live region', () => {
+  it('renders an empty polite live region on mount', () => {
     render(
       <MilestoneFilter
         selected="All"
@@ -72,13 +76,30 @@ describe('MilestoneFilter', () => {
       />,
     );
 
-    const liveRegion = screen.getByText('Showing all 2 milestones');
+    const liveRegion = screen.getByRole('status', {
+      name: 'Milestone filter updates',
+    });
     expect(liveRegion).toHaveAttribute('aria-live', 'polite');
     expect(liveRegion).toHaveAttribute('aria-atomic', 'true');
+    expect(liveRegion).toHaveTextContent('');
   });
 
-  it('announces filtered result counts with singular and lowercase status text', () => {
+  it('debounces filtered result announcements until updates settle', () => {
+    jest.useFakeTimers();
+
     const { rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={5}
+      />,
+    );
+
+    const liveRegion = screen.getByRole('status', {
+      name: 'Milestone filter updates',
+    });
+
+    rerender(
       <MilestoneFilter
         selected="Paid"
         onChange={jest.fn()}
@@ -86,7 +107,42 @@ describe('MilestoneFilter', () => {
       />,
     );
 
-    expect(screen.getByText('Showing 1 paid milestone')).toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(249);
+    });
+    expect(liveRegion).toHaveTextContent('');
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(liveRegion).toHaveTextContent('Showing 1 paid milestone');
+  });
+
+  it('announces only the latest result after rapid successive updates', () => {
+    jest.useFakeTimers();
+
+    const { rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={5}
+      />,
+    );
+
+    const liveRegion = screen.getByRole('status', {
+      name: 'Milestone filter updates',
+    });
+
+    rerender(
+      <MilestoneFilter
+        selected="Pending"
+        onChange={jest.fn()}
+        resultCount={2}
+      />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(125);
+    });
 
     rerender(
       <MilestoneFilter
@@ -96,7 +152,40 @@ describe('MilestoneFilter', () => {
       />,
     );
 
-    expect(screen.getByText('Showing 3 disputed milestones')).toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(liveRegion).toHaveTextContent('Showing 3 disputed milestones');
+    expect(liveRegion).not.toHaveTextContent('Showing 2 pending milestones');
+  });
+
+  it('announces zero-result filters with plural lowercase status text', () => {
+    jest.useFakeTimers();
+
+    const { rerender } = render(
+      <MilestoneFilter
+        selected="All"
+        onChange={jest.fn()}
+        resultCount={2}
+      />,
+    );
+
+    rerender(
+      <MilestoneFilter
+        selected="Paid"
+        onChange={jest.fn()}
+        resultCount={0}
+      />,
+    );
+
+    act(() => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(
+      screen.getByRole('status', { name: 'Milestone filter updates' }),
+    ).toHaveTextContent('Showing 0 paid milestones');
   });
 
   it('passes axe accessibility checks', async () => {
