@@ -156,21 +156,28 @@ The form submits a complete `Contract` object conforming to the domain type:
 
 ## Testing
 
-Comprehensive test coverage includes:
+### Component tests
 
-- Form rendering and initial state
-- Required field validation
-- Numeric value validation
-- Stellar address validation via `isValidStellarAddress`
-- Party management (add/remove)
-- Successful submission with valid data
-- Cancel functionality
-- Accessibility attributes
-- Error display and focus management
-- Whitespace trimming
-- Empty party filtering
+Covers rendering, required field validation, party management, submission, and accessibility:
 
 See `src/components/__tests__/ContractCreationForm.test.tsx` for full test suite.
+
+### Unit-level validation tests
+
+The pure validation logic in `src/lib/validateContract.ts` is tested independently in:
+
+**`src/lib/validateContract.test.ts`**
+
+These tests cover every rule in the validator:
+
+- **`contractName`**: empty, whitespace-only, and trimmed inputs.
+- **`freelancerAddress`**: empty, whitespace-only, malformed G... key, invalid checksum, wrong prefix, and valid keys (including whitespace/normalization). Confirms that empty and structurally-invalid addresses produce **different** error messages, each with exactly one error.
+- **`totalValue`**: empty, whitespace, non-numeric (`abc`), zero, negative, `Infinity`, `-Infinity`, and valid decimals.
+- **`currency`**: empty, whitespace-only, and trimmed inputs.
+- **Multiple errors**: verifies all four fields fail simultaneously in deterministic order.
+- **Valid payload**: confirms an empty error array for fully valid input.
+
+These tests protect against regressions in the client-side validation rules and in Stellar address rejection logic. Because `validateContract` is a pure function, the tests require no React context or DOM, making them fast and reliable.
 
 ## Best Practices
 

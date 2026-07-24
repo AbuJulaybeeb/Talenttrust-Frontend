@@ -1,6 +1,11 @@
 import React from 'react';
 import { render, act, renderHook, screen, fireEvent } from '@testing-library/react';
-import { PreferencesProvider, usePreferences } from '../preferences';
+import {
+  PreferencesProvider,
+  sanitizePreferences,
+  usePreferences,
+  type UserPreferences,
+} from '../preferences';
 import { resetCache } from '../safeStorage';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -59,6 +64,351 @@ describe('PreferencesProvider', () => {
     const { result } = renderHook(() => usePreferences(), { wrapper });
     expect(result.current.preferences.theme).toBe('system');
     (console.error as jest.Mock).mockRestore();
+  });
+
+  it('falls back to defaults when JSON parses to a non-object payload', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    localStorage.setItem('talenttrust-user-preferences', JSON.stringify([1, 2, 3]));
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences).toEqual({
+      theme: 'system',
+      amountFormat: 'usd',
+      toastDensity: 'relaxed',
+      quietMode: false,
+      toastDuration: 'normal',
+      idleDisconnectMs: 0,
+    });
+    (console.error as jest.Mock).mockRestore();
+  });
+
+  it('ignores __proto__ payloads and keeps defaults', () => {
+    const malicious = '{"__proto__":{"polluted":true},"theme":"dark"}';
+    localStorage.setItem('talenttrust-user-preferences', malicious);
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    // Valid `theme` should still be picked up…
+    expect(result.current.preferences.theme).toBe('dark');
+    // …but nothing should reach Object.prototype via the merge.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    // And the sanitized state must not be polluted itself.
+    expect(
+      Object.prototype.hasOwnProperty.call(result.current.preferences, '__proto__'),
+    ).toBe(false);
+  });
+
+  it('ignores constructor payloads', () => {
+    const malicious =
+      '{"constructor":{"prototype":{"polluted":true}},"quietMode":true}';
+    localStorage.setItem('talenttrust-user-preferences', malicious);
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.quietMode).toBe(true);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('drops unknown keys and invalid enum values', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({
+        theme: 'red', // invalid
+        amountFormat: 'eur', // invalid
+        toastDensity: 'compact', // valid
+        quietMode: true,
+        garbage: 'should-be-dropped',
+      }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.theme).toBe('system'); // invalid → default
+    expect(result.current.preferences.amountFormat).toBe('usd'); // invalid → default
+    expect(result.current.preferences.toastDensity).toBe('compact');
+    expect(result.current.preferences.quietMode).toBe(true);
+    // The state object must not carry the unknown key.
+    expect(
+      Object.prototype.hasOwnProperty.call(result.current.preferences, 'garbage'),
+    ).toBe(false);
+  });
+
+  it('rejects non-boolean quietMode values (truthy coercion guard)', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ quietMode: 1 }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.quietMode).toBe(false);
+
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ quietMode: 'true' }),
+    );
+    const { result: r2 } = renderHook(() => usePreferences(), { wrapper });
+    expect(r2.current.preferences.quietMode).toBe(false);
+  });
+
+  it('persists only the six known keys even after a malicious payload round-trips', async () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({
+        theme: 'dark',
+        amountFormat: 'ngn',
+        toastDensity: 'compact',
+        quietMode: true,
+        toastDuration: 'long',
+        idleDisconnectMs: 10000,
+        secretKey: 'leaked',
+      }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    // Trigger a re-save with no changes.
+    act(() => { result.current.updatePreference('theme', 'dark'); });
+
+    const serialized = JSON.parse(
+      localStorage.getItem('talenttrust-user-preferences') || '{}',
+    );
+    // Modern JS engines preserve string-key insertion order in JSON.stringify,
+    // so we compare with `.sort()` for engine-independent comparison.
+    expect(Object.keys(serialized).sort()).toEqual([
+      'amountFormat',
+      'idleDisconnectMs',
+      'quietMode',
+      'theme',
+      'toastDensity',
+      'toastDuration',
+    ]);
+  });
+
+  it('loads toastDuration from localStorage when valid', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ toastDuration: 'short' }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.toastDuration).toBe('short');
+  });
+
+  it('loads toastDuration: persistent from localStorage', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ toastDuration: 'persistent' }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.toastDuration).toBe('persistent');
+  });
+
+  it('falls back to normal when stored toastDuration is invalid', () => {
+    localStorage.setItem(
+      'talenttrust-user-preferences',
+      JSON.stringify({ toastDuration: 'forever' }),
+    );
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    expect(result.current.preferences.toastDuration).toBe('normal');
+  });
+
+  it('persists toastDuration change and re-hydrates correctly', () => {
+    const { result } = renderHook(() => usePreferences(), { wrapper });
+    act(() => { result.current.updatePreference('toastDuration', 'long'); });
+
+    const saved = JSON.parse(localStorage.getItem('talenttrust-user-preferences') || '{}');
+    expect(saved.toastDuration).toBe('long');
+
+    // Simulate page reload by mounting a fresh hook instance after the save.
+    const { result: result2 } = renderHook(() => usePreferences(), { wrapper });
+    act(() => {}); // flush effects
+    expect(result2.current.preferences.toastDuration).toBe('long');
+  });
+});
+
+describe('sanitizePreferences (pure helper)', () => {
+  const DEFAULTS: UserPreferences = {
+    theme: 'system',
+    amountFormat: 'usd',
+    toastDensity: 'relaxed',
+    quietMode: false,
+    toastDuration: 'normal',
+    idleDisconnectMs: 0,
+  };
+
+  it('returns DEFAULT_PREFERENCES for null', () => {
+    expect(sanitizePreferences(null)).toEqual(DEFAULTS);
+  });
+
+  it('returns DEFAULT_PREFERENCES for primitives', () => {
+    expect(sanitizePreferences(undefined)).toEqual(DEFAULTS);
+    expect(sanitizePreferences(42)).toEqual(DEFAULTS);
+    expect(sanitizePreferences('hello')).toEqual(DEFAULTS);
+    expect(sanitizePreferences(true)).toEqual(DEFAULTS);
+  });
+
+  it('returns DEFAULT_PREFERENCES for arrays', () => {
+    expect(sanitizePreferences([])).toEqual(DEFAULTS);
+    expect(sanitizePreferences(['theme', 'dark'])).toEqual(DEFAULTS);
+  });
+
+  it('returns DEFAULT_PREFERENCES for an empty object', () => {
+    expect(sanitizePreferences({})).toEqual(DEFAULTS);
+  });
+
+  it('accepts a fully valid object', () => {
+    expect(
+      sanitizePreferences({
+        theme: 'dark',
+        amountFormat: 'compact',
+        toastDensity: 'compact',
+        quietMode: true,
+        toastDuration: 'long',
+        idleDisconnectMs: 15000,
+      }),
+    ).toEqual({
+      theme: 'dark',
+      amountFormat: 'compact',
+      toastDensity: 'compact',
+      quietMode: true,
+      toastDuration: 'long',
+      idleDisconnectMs: 15000,
+    });
+  });
+
+  it('merges a partial object with defaults (only valid keys overwrite)', () => {
+    expect(
+      sanitizePreferences({ theme: 'light', quietMode: true }),
+    ).toEqual({
+      theme: 'light',
+      amountFormat: 'usd',
+      toastDensity: 'relaxed',
+      quietMode: true,
+      toastDuration: 'normal',
+      idleDisconnectMs: 0,
+    });
+  });
+
+  it('drops unknown keys outright', () => {
+    const result = sanitizePreferences({
+      theme: 'dark',
+      unknownKey: 'x',
+      nested: { evil: true },
+    } as unknown as UserPreferences);
+    expect(result.theme).toBe('dark');
+    expect(Object.prototype.hasOwnProperty.call(result, 'unknownKey')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, 'nested')).toBe(false);
+  });
+
+  it('rejects invalid theme values', () => {
+    expect(sanitizePreferences({ theme: 'red' })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ theme: 123 } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+    expect(sanitizePreferences({ theme: null } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('rejects invalid amountFormat values', () => {
+    expect(sanitizePreferences({ amountFormat: 'eur' })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ amountFormat: 1 } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('rejects invalid toastDensity values', () => {
+    expect(sanitizePreferences({ toastDensity: 'wide' })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ toastDensity: 2 } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('rejects non-boolean quietMode values even when truthy', () => {
+    expect(sanitizePreferences({ quietMode: 1 } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+    expect(sanitizePreferences({ quietMode: 'true' } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+    expect(sanitizePreferences({ quietMode: {} } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('rejects __proto__ payloads and does not pollute prototypes', () => {
+    const attackerPayload = JSON.parse(
+      '{"__proto__":{"polluted":true},"theme":"dark"}',
+    );
+    sanitizePreferences(attackerPayload);
+
+    // The attack must not have installed a property on Object.prototype.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('rejects constructor payloads and does not pollute prototypes', () => {
+    const attackerPayload = JSON.parse(
+      '{"constructor":{"prototype":{"polluted":true}},"quietMode":true}',
+    );
+    const result = sanitizePreferences(attackerPayload);
+    expect(result.quietMode).toBe(true);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('rejects prototype payloads', () => {
+    const attackerPayload = JSON.parse(
+      '{"prototype":{"polluted":true},"amountFormat":"ngn"}',
+    );
+    const result = sanitizePreferences(attackerPayload);
+    expect(result.amountFormat).toBe('ngn');
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('mixes valid overrides with rejected noise', () => {
+    const result = sanitizePreferences({
+      theme: 'dark',
+      amountFormat: '???', // invalid
+      toastDensity: 'compact',
+      quietMode: 'yes', // invalid
+      toastDuration: 'persistent', // valid
+      idleDisconnectMs: 10000, // valid
+      bogus: true, // unknown
+      constructor: { hacked: 1 }, // dangerous
+    } as unknown as UserPreferences);
+    expect(result).toEqual({
+      theme: 'dark',
+      amountFormat: 'usd',
+      toastDensity: 'compact',
+      quietMode: false,
+      toastDuration: 'persistent',
+      idleDisconnectMs: 10000,
+    });
+  });
+
+  it('rejects invalid toastDuration values', () => {
+    expect(sanitizePreferences({ toastDuration: 'forever' })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ toastDuration: 5000 } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+    expect(sanitizePreferences({ toastDuration: null } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('rejects invalid idleDisconnectMs values', () => {
+    expect(sanitizePreferences({ idleDisconnectMs: 4000 })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ idleDisconnectMs: 31000 })).toEqual({ ...DEFAULTS });
+    expect(sanitizePreferences({ idleDisconnectMs: '10000' } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+    expect(sanitizePreferences({ idleDisconnectMs: null } as unknown as UserPreferences)).toEqual({
+      ...DEFAULTS,
+    });
+  });
+
+  it('ignores inherited keys on the source object (only own keys are read)', () => {
+    function Attacker() {}
+    (Attacker.prototype as Record<string, unknown>).polluted = true;
+    (Attacker.prototype as Record<string, unknown>).theme = 'dark';
+    try {
+      const attackerInstance = new Attacker();
+      const result = sanitizePreferences(attackerInstance);
+      expect(result.theme).toBe('system');
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    } finally {
+      // Clean up so the mutation cannot leak into other test files.
+      delete (Attacker.prototype as Record<string, unknown>).polluted;
+      delete (Attacker.prototype as Record<string, unknown>).theme;
+    }
   });
 });
 
@@ -265,3 +615,47 @@ describe('formatAmount invalid currency codes', () => {
   });
 });
 
+describe('theme application', () => {
+  function mockMatchMedia(matches: boolean) {
+    const addEventListener = jest.fn();
+    const removeEventListener = jest.fn();
+    const mediaQueryList = {
+      matches,
+      media: '(prefers-color-scheme: dark)',
+      onchange: null,
+      addEventListener,
+      removeEventListener,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    } as unknown as MediaQueryList;
+
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: jest.fn(() => mediaQueryList),
+    });
+
+    return { addEventListener, removeEventListener };
+  }
+
+  it('applies the system theme using the media query result', () => {
+    mockMatchMedia(true);
+    render(<PreferencesProvider><div /></PreferencesProvider>);
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.classList.contains('light')).toBe(false);
+  });
+
+  it('registers and cleans up the system theme listener while theme is set to system', () => {
+    const { addEventListener, removeEventListener } = mockMatchMedia(false);
+
+    const { unmount } = render(<PreferencesProvider><div /></PreferencesProvider>);
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(addEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+
+    unmount();
+    expect(removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+  });
+});

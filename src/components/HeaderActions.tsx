@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
 
@@ -15,7 +15,7 @@ import { WalletConnectButton } from '@/components/WalletConnectButton';
  * `WalletConnectButton` while still rendering a keyboard-accessible toggle
  * for mobile users.
  */
-export default function HeaderActions(): JSX.Element {
+export default function HeaderActions(): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
   const menuId = 'header-wallet-actions';
 

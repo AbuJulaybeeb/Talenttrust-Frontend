@@ -1,4 +1,0 @@
-  ▲ Next.js 14.2.18
-
-   Creating an optimized production build ...
-EXIT:124

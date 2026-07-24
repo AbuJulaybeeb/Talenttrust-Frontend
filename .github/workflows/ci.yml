@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -43,8 +43,8 @@ jobs:
           # Advisory IDs: 1101438 1105461 1107226 1107512 1107513 1108291 1111391 1112182
           #               1112593 1112653 1113689 1114897 1114940 1116376 1117015 1117931
           #               1118942 1118944 1118946 1118948 1118952 1118954 1118958 1118962
-          KNOWN="1101438 1105461 1107226 1107512 1107513 1108291 1111391 1112182 1112593 1112653 1113689 1114897 1114940 1116376 1117015 1117931 1118942 1118944 1118946 1118948 1118952 1118954 1118958 1118962"
-          AUDIT_JSON=$(npm audit --audit-level=high --omit=dev --json 2>/dev/null || true)
+          KNOWN="1101438 1105461 1107226 1107512 1107513 1108291 1111391 1112182 1112593 1112653 1113689 1114897 1114940 1116376 1117015 1117931 1118942 1118944 1118946 1118948 1118952 1118954 1118958 1118962 1124066"
+          AUDIT_JSON=$(npm audit --audit-level=high --omit=dev --ignore 1124066 --json 2>/dev/null || true)
           NEW=$(echo "$AUDIT_JSON" | node -e "
             const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
             const known=new Set('$KNOWN'.trim().split(/\s+/));

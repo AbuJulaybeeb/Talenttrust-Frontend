@@ -196,6 +196,22 @@ No changes to rendering logic are needed when API is integrated.
 
 ---
 
+## Reputation Level Legend & Bands
+
+The reputation score (which defaults to a scale of 0 to 5) is mapped to one of five reputation levels. If no explicit level is provided to the `ReputationProfile` component, the level is derived automatically from the score based on the following bands:
+
+| Min Score (Inclusive) | Max Score | Level Name |
+|-----------------------|-----------|------------|
+| 0.0                   | 1.0       | Newcomer   |
+| 1.0                   | 2.0       | Contributor|
+| 2.0                   | 3.0       | Active Contributor |
+| 3.0                   | 4.0       | Trusted Partner    |
+| 4.0                   | 5.0 (Incl)| Expert     |
+
+These bands scale proportionally if a custom `maxScore` is provided (e.g., if `maxScore` is 10, the "Trusted Partner" band scales to 6.0 - 8.0).
+
+---
+
 ## Testing
 
 ### Coverage Requirements

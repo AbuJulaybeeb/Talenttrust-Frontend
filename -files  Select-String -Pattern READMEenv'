@@ -1,0 +1,47 @@
+[35m.github/ISSUE_TEMPLATE/bug_report.md[m[36m:[m## [1;31mEnv[mironment
+[35mREADME.md[m[36m:[m## [1;31mEnv[mironment variables
+[35mREADME.md[m[36m:[mThis app uses Next.js [1;31menv[mironment variables. Public variables must be prefixed with `NEXT_PUBLIC_` and are exposed to browser JavaScript. Secrets must never be stored in `NEXT_PUBLIC_` variables.
+[35mREADME.md[m[36m:[mThe repo includes a sample file at [`.[1;31menv[m.example`](.[1;31menv[m.example) with the current public config and reserved future variables.
+[35mREADME.md[m[36m:[m- **Bug reports** — `.github/ISSUE_TEMPLATE/bug_report.md`: includes reproduction steps, [1;31menv[mironment details, and an impacted-route field.
+[35mREPUTATION_PAGE_PR.md[m[36m:[m- ✅ Configured [1;31menv[mironment globals (browser, Node, Jest, React)
+[35mdocs/components/Accessibility.md[m[36m:[m- **jest-axe** runs in a JSDOM [1;31menv[mironment, which does not fully simulate visual rendering. Color-contrast violations are still detected because axe checks computed styles from JSDOM's CSS support.
+[35mdocs/components/Accessibility.md[m[36m:[mcompiled Tailwind classes in this test [1;31menv[mironment. The ratios in this
+[35mdocs/contexts/wallet-session.md[m[36m:[m* Storage interactions are safely wrapped using `safeStorage` (in [`src/lib/safeStorage.ts`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/lib/safeStorage.ts)) to catch potential storage access exceptions in restricted browser [1;31menv[mironments.
+[35mdocs/error-reporting.md[m[36m:[mThe default error reporter adapts automatically to the [1;31menv[mironment:
+[35mdocs/error-reporting.md[m[36m:[m1. **Development/Test (`process.[1;31menv[m.NODE_[1;31mENV[m !== 'production'`)**:
+[35mdocs/error-reporting.md[m[36m:[m2. **Production (`process.[1;31menv[m.NODE_[1;31mENV[m === 'production'`)**:
+[35mdocs/hooks/useMediaQuery.md[m[36m:[m1. The hook returns `false` on the server and in [1;31menv[mironments where `window.matchMedia` is unavailable.
+[35mdocs/security-headers.md[m[36m:[m# Development (NODE_[1;31mENV[m=development)
+[35mdocs/security-headers.md[m[36m:[m# Production (NODE_[1;31mENV[m=production)
+[35mdocs/security-headers.md[m[36m:[m   keep both lines and toggle with an [1;31menv[mironment variable:
+[35mdocs/security-headers.md[m[36m:[m   `script-src 'self'${process.[1;31menv[m.NODE_[1;31mENV[m === 'development' ? " 'unsafe-eval'" : ''}`,
+[35mjest.config.js[m[36m:[m  test[1;31mEnv[mironment: 'jsdom',
+[35mjest.config.js[m[36m:[m  setupFilesAfter[1;31mEnv[m: ['<rootDir>/jest.setup.ts'],
+[35mnext.config.js[m[36m:[m// Build CSP directives conditionally based on [1;31menv[mironment
+[35mnext.config.js[m[36m:[mif (process.[1;31menv[m.NODE_[1;31mENV[m === 'development') {
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`11b3e470db`](https://github.com/nodejs/node/commit/11b3e470db)] - **(SEMVER-MINOR)** **src**: create per isolate proxy [1;31menv[m template (Chengzhong Wu) [#48655](https://github.com/nodejs/node/pull/48655)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`11b3e470db`](https://github.com/nodejs/node/commit/11b3e470db)] - **(SEMVER-MINOR)** **src**: create per isolate proxy [1;31menv[m template (Chengzhong Wu) [#48655](https://github.com/nodejs/node/pull/48655)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`6f46d31018`](https://github.com/nodejs/node/commit/6f46d31018)] - **src**: return error --[1;31menv[m-file if file is not found (Ardi Nugraha) [#50588](https://github.com/nodejs/node/pull/50588)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`41644ee071`](https://github.com/nodejs/node/commit/41644ee071)] - **test**: improve `UV_THREADPOOL_SIZE` tests on `.[1;31menv[m` (Yagiz Nizipli) [#49213](https://github.com/nodejs/node/pull/49213)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`aab045ec4b`](https://github.com/nodejs/node/commit/aab045ec4b)] - **doc**: mention files read before [1;31menv[m setup (Rafael Gonzaga) [#50072](https://github.com/nodejs/node/pull/50072)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`5131fde655`](https://github.com/nodejs/node/commit/5131fde655)] - **src**: use exact return value for `uv_os_get[1;31menv[m` (Yagiz Nizipli) [#49149](https://github.com/nodejs/node/pull/49149)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`8dd895e574`](https://github.com/nodejs/node/commit/8dd895e574)] - **test**: replace forEach with for..of in test-process-[1;31menv[m (Niya Shiyas) [#49825](https://github.com/nodejs/node/pull/49825)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`e323a367fd`](https://github.com/nodejs/node/commit/e323a367fd)] - **tools**: remove g[1;31menv[m8constants.py (Ben Noordhuis) [#50023](https://github.com/nodejs/node/pull/50023)
+[35mnode-bin/CHANGELOG.md[m[36m:[mCollecting code coverage via the `NODE_V8_COVERAGE` [1;31menv[mironment variable may
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`3987094569`](https://github.com/nodejs/node/commit/3987094569)] - **test**: make `test-dot[1;31menv[m-node-options` locale-independent (Livia Medeiros) [#49470](https://github.com/nodejs/node/pull/49470)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`022f1b70c1`](https://github.com/nodejs/node/commit/022f1b70c1)] - **src**: support multiple `--[1;31menv[m-file` declarations (Yagiz Nizipli) [#49542](https://github.com/nodejs/node/pull/49542)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`022f1b70c1`](https://github.com/nodejs/node/commit/022f1b70c1)] - **src**: support multiple `--[1;31menv[m-file` declarations (Yagiz Nizipli) [#49542](https://github.com/nodejs/node/pull/49542)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`154b1c2115`](https://github.com/nodejs/node/commit/154b1c2115)] - **src**: don't overwrite [1;31menv[mironment from .[1;31menv[m file (Phil Nash) [#49424](https://github.com/nodejs/node/pull/49424)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`a11e64e09c`](https://github.com/nodejs/node/commit/a11e64e09c)] - **test**: fix compiler warning in NodeCrypto[1;31mEnv[m (Tobias Nießen) [#49206](https://github.com/nodejs/node/pull/49206)
+[35mnode-bin/CHANGELOG.md[m[36m:[m#### built-in `.[1;31menv[m` file support
+[35mnode-bin/CHANGELOG.md[m[36m:[mStarting from Node.js v20.6.0, Node.js supports `.[1;31menv[m` files for configuring [1;31menv[mironment variables.
+[35mnode-bin/CHANGELOG.md[m[36m:[mYour configuration file should follow the INI file format, with each line containing a key-value pair for an [1;31menv[mironment variable.
+[35mnode-bin/CHANGELOG.md[m[36m:[mTo initialize your Node.js application with predefined configurations, use the following CLI command: `node --[1;31menv[m-file=config.[1;31menv[m index.js`.
+[35mnode-bin/CHANGELOG.md[m[36m:[mFor example, you can access the following [1;31menv[mironment variable using `process.[1;31menv[m.PASSWORD` when your application is initialized:
+[35mnode-bin/CHANGELOG.md[m[36m:[mIn addition to [1;31menv[mironment variables, this change allows you to define your `NODE_OPTIONS` directly in the `.[1;31menv[m` file, eliminating the need to include it in your `package.json`.
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`9c26c0f296`](https://github.com/nodejs/node/commit/9c26c0f296)] - **doc**: clarify use of process.[1;31menv[m in worker threads on Windows (Daeyeon Jeong) [#49008](https://github.com/nodejs/node/pull/49008)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`bf7ff369f6`](https://github.com/nodejs/node/commit/bf7ff369f6)] - **src**: add built-in `.[1;31menv[m` file support (Yagiz Nizipli) [#48890](https://github.com/nodejs/node/pull/48890)
+[35mnode-bin/CHANGELOG.md[m[36m:[m* \[[`ba255eda37`](https://github.com/nodejs/node/commit/ba255eda37)] - **src**: fix typo in process.[1;31menv[m accessor error message (Moritz Raho) [#47014](https://github.com/nodejs/node/pull/47014)
+[35mnode-bin/README.md[m[36m:[mNode.js is an open-source, cross-platform JavaScript runtime [1;31menv[mironment.
+[35msrc/app/__tests__/csp.test.ts[m[36m:[masync function loadHeadersFor[1;31mEnv[m(node[1;31mEnv[m: string) {
+[35msrc/app/__tests_

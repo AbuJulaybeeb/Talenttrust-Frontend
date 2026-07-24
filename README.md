@@ -33,6 +33,20 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run lint` | Run ESLint             |
 | `npm test`    | Run Jest tests           |
 
+## Documentation Index
+
+This repository keeps user-facing and implementation notes inside the `docs/` folder. Key documentation includes:
+
+- `docs/components/Accessibility.md` — Accessibility testing, a11y helpers, and issue #383 notes
+- `docs/components/ReputationPage.md` — Reputation page implementation and rendering states
+- `docs/data-model.md` — Data model and persistence guide
+- `docs/persistence.md` — Persistence API and local storage patterns
+- `docs/preferences.md` — Preferences provider and currency/locale helpers
+- `docs/contexts/wallet-session.md` — Wallet session lifecycle and idle disconnect guidance
+- `docs/implementation/ISSUE_383_IMPLEMENTATION.md` — Folded implementation notes for issue #383
+
+If you find other implementation notes in the repository root, they have been consolidated into `docs/` where appropriate. Remove or ignore remaining one-off files.
+
 ## Architecture
 
 The project is built on Next.js App Router. The UI layer shares components, whilst global state is handled via an ordered provider stack.
@@ -43,7 +57,7 @@ The project is built on Next.js App Router. The UI layer shares components, whil
 |-------|-------------|--------|
 | `/` | Landing page / Home | Placeholder (contains a login form demo and toast demo) |
 | `/contracts` | Contracts list | Placeholder handler (uses local storage stub) |
-| `/contracts/[id]` | Contract details | Placeholder (sample milestones and stubbed action handlers) |
+| `/contracts/[id]` | Contract details | Implemented — `ContractSummary`, `ContractProgress`, `MilestonesList`, and `ActionPanel` mounted from resolved `ContractData`; loading skeletons and error states fully wired |
 | `/milestones` | Milestones list | Implemented (filterable status list) |
 | `/reputation` | User reputation | Placeholder (empty state) |
 
@@ -62,6 +76,12 @@ Providers are wired in `src/app/layout.tsx` with a specific nesting order:
 
 Shared components live in `src/components/` (e.g., `src/components/toast/`). Shared utilities and domain types live in `src/lib/` and `src/types/`.
 
+### Data Model & Persistence
+
+The application relies on a client-side persistence layer for storing contracts and milestones. For a complete overview of the API, `AppData` shape, and update operations, see the [Persistence API and Data Model Guide](docs/data-model.md).
+
+User-level settings are handled by `PreferencesProvider`. For the preference model, theme hydration flow, safe storage behavior, and `formatAmount` branches, see the [Preferences Provider Guide](docs/preferences.md).
+
 ## Toast notifications
 
 The app includes a global accessible toast system for transient feedback:
@@ -74,12 +94,14 @@ The app includes a global accessible toast system for transient feedback:
 
 ## Session safety
 
-To improve security on shared or public machines, the `WalletProvider` includes an optional idle auto-disconnect safeguard.
+To improve security on shared or public machines, the [`WalletProvider`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L31) includes an optional idle auto-disconnect safeguard.
 
-- **Configurable Timeout**: Pass an `idleTimeout` prop (in milliseconds) to `WalletProvider` in `src/app/layout.tsx`.
+- **Configurable Timeout**: Pass an [`idleTimeout`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L33) prop (in milliseconds) to [`WalletProvider`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/contexts/WalletContext.tsx#L31) in [`src/app/layout.tsx`](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/src/app/layout.tsx).
 - **Activity Monitoring**: The timer resets on user activity (pointer moves, key presses, clicks, etc.).
 - **Auto-Disconnect**: Once the idle period expires, the wallet is automatically disconnected and a notification is shown.
 - **Default Behaviour**: The safeguard is disabled by default (`idleTimeout={0}`). Recommended value for production is 15 minutes (`900000` ms).
+
+For more details on the session lifecycle, storage keys, and inactivity events, see the [Wallet Session Management Guide](file:///c:/Users/USER/Desktop/Talenttrust-Frontend/docs/contexts/wallet-session.md).
 
 Example:
 
@@ -88,6 +110,7 @@ Example:
   {children}
 </WalletProvider>
 ```
+
 
 ## Wallet integration
 
@@ -176,6 +199,7 @@ The shared utility layer now includes lightweight Stellar address helpers in [sr
 
 - `isValidStellarAddress(value)` returns `true` only for a trimmed, uppercased value that looks like a Stellar public key: it starts with `G`, is exactly 56 characters long, and uses the base32 alphabet `A-Z` and `2-7`.
 - `normalizeStellarAddress(value)` trims whitespace and uppercases the value without throwing on invalid input.
+- `truncateAddress(value, prefixLength?, suffixLength?)` in [src/lib/truncateAddress.ts](src/lib/truncateAddress.ts) securely shortens addresses (or any string) by preserving the start and end, and inserting an ellipsis. Strings shorter than or equal to `prefixLength + suffixLength + 3` are returned untouched.
 - The display truncation path uses these helpers so clearly malformed addresses are treated as ordinary strings rather than being shortened as if they were valid keys.
 
 ## Authentication form validation and accessibility

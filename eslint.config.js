@@ -6,8 +6,19 @@ const tsPlugin = require('@typescript-eslint/eslint-plugin');
 
 module.exports = [
   // Ignore stray files that should never be linted
+  // - `test_check.js` and `coverage/**` are generated/test artefacts that
+  //   would otherwise pollute lint output during CI.
+  // - `.next/**` is the Next.js build cache (regenerated on every build).
+  // - `node_modules/**` is third-party code.
+  // - `src/declarations.d.ts` holds ambient declarations (no executable code).
   {
-    ignores: ['test_check.js', '.next/**', 'node_modules/**', 'src/declarations.d.ts'],
+    ignores: [
+      '**/test_check.js',
+      '**/.next/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      '**/src/declarations.d.ts',
+    ],
   },
   js.configs.recommended,
   {

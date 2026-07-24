@@ -3,20 +3,25 @@ import '@testing-library/jest-dom';
 import { toHaveNoViolations } from 'jest-axe';
 expect.extend(toHaveNoViolations);
 
-// Mock matchMedia (not implemented in jsdom)
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-});
+// Mock matchMedia (not implemented in jsdom).
+// Guarded because some suites (e.g. *.ssr.test.ts files simulating SSR)
+// intentionally run under the `node` test environment, where `window` does
+// not exist at all.
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  });
+}
 
 // Mock next/link to a plain <a> to avoid intersection/prefetch behavior
 jest.mock('next/link', () => {
@@ -35,8 +40,8 @@ jest.mock('next/navigation', () => ({
 
 // Polyfill requestIdleCallback / cancelIdleCallback used by next's request-idle-callback
 if (typeof global.requestIdleCallback === 'undefined') {
-  global.requestIdleCallback = (cb: any) => setTimeout(() => cb({ timeRemaining: () => 50 }), 0);
-  global.cancelIdleCallback = (id: any) => clearTimeout(id);
+  global.requestIdleCallback = (cb: any) => setTimeout(() => cb({ timeRemaining: () => 50 }), 0) as unknown as number;
+  global.cancelIdleCallback = (id: any) => clearTimeout(id as any);
 }
 
 // Provide a simple IntersectionObserver stub so next/use-intersection does not schedule async work
@@ -50,17 +55,21 @@ if (typeof global.IntersectionObserver === 'undefined') {
   global.IntersectionObserver = MockIntersectionObserver as any;
 }
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    clear: () => { store = {}; },
-    removeItem: (key: string) => { delete store[key]; },
-  };
-})();
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+// Mock localStorage (guarded — see the `matchMedia` note above).
+if (typeof window !== 'undefined') {
+  const localStorageMock = (() => {
+    let store: Record<string, string> = {};
+    return {
+      get length() { return Object.keys(store).length; },
+      key: (index: number) => Object.keys(store)[index] ?? null,
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value; },
+      clear: () => { store = {}; },
+      removeItem: (key: string) => { delete store[key]; },
+    };
+  })();
+  Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+}
 
 // Global mock for WalletContext so components using useWallet work without a provider
 jest.mock('@/contexts/WalletContext', () => ({

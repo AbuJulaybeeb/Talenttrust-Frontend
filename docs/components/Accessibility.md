@@ -5,7 +5,7 @@ Automated accessibility regression tests catch contrast, role, labeling, and sem
 ## Setup
 
 - **jest-axe** is installed as a dev dependency.
-- The custom `toHaveNoViolations` matcher is registered in `jest.setup.js`.
+- The custom `toHaveNoViolations` matcher is registered in `jest.setup.ts`.
 - A shared helper module lives at `src/test-utils/a11y.tsx` with:
   - `testA11y(ui, options?)` — renders a component and asserts zero axe violations.
   - `assertNoA11yViolations(container)` — runs axe on an already-rendered container.
@@ -170,22 +170,61 @@ Tests live in `src/components/__tests__/ErrorSummary.test.tsx` and cover:
 
 Per WCAG guidelines, a page should have exactly one `<main>` landmark to avoid confusing screen reader users with duplicate navigation targets. The root layout (`src/app/layout.tsx`) provides the single `<main id="main-content">` landmark, so page components must not render nested `<main>` elements.
 
-### Home page landmark fix (issue #148)
+### Home page landmark and heading hierarchy fix (issue #383)
 
-The home sign-in form (`src/app/page.tsx`) previously had two accessibility issues:
-1. **Nested `<main>` landmark** - The page rendered its own `<main>` element while the layout already provided one, creating duplicate landmarks
-2. **Duplicate `<h1>` heading** - The page rendered an `<h1>` "TalentTrust" while the layout header already displayed the same text, breaking the heading hierarchy
+The home sign-in form (`src/app/page.tsx`) previously had two accessibility issues that undermined the error summary's accessibility and violate WCAG 2.1 AA requirements:
 
-**Fix applied:**
-- Removed the nested `<main>` from `src/app/page.tsx` and replaced it with a `<div>` wrapper
-- Changed the page heading from `<h1>` to `<h2>` since the layout header provides the page title
-- Added a comment explaining the single-landmark rule for future maintainers
+#### Problems fixed
 
-**Test coverage:**
-- Added tests in `src/app/page.test.tsx` to verify exactly one `<main>` landmark exists
-- Added tests to verify no `<h1>` exists in the page component
-- Added comprehensive jest-axe coverage for empty, errored, and valid form states
-- Verified ErrorSummary focus and error anchor targeting work correctly
+1. **Nested `<main>` landmark** — The page rendered its own `<main>` element while the layout already provided one, creating duplicate landmarks. Screen reader users navigating by landmark would encounter two `<main>` regions, forcing them to choose blindly which one to enter.
+
+2. **Duplicate `<h1>` heading** — The page rendered an `<h1>` "TalentTrust" while the layout header already displayed the same text. This created a broken heading hierarchy where two `<h1>`s existed on the same page, and the second one was buried inside form content rather than at the page's start, violating the logical outline expected by screen readers.
+
+#### Solution implemented
+
+- **Removed the nested `<main>`** from `src/app/page.tsx` and replaced the wrapping element with a standard `<div>`. The layout's `<main id="main-content" tabIndex={-1}>` now serves as the sole page-level landmark.
+- **Changed the page heading from `<h1>` to `<h2>`** since the layout header provides the page title. This preserves the hero copy and styling while establishing a correct heading hierarchy: `<h1>` in the header, then `<h2>` for the form section.
+- **Added an inline comment** explaining the single-landmark rule and why no nested `<main>` is rendered, helping future maintainers understand the constraint.
+
+#### Why this matters for form accessibility
+
+The `ErrorSummary` component relies on a clean landmark structure to be maximally useful:
+- When validation fails, `ErrorSummary` receives focus via a `useEffect` hook and `tabIndex={-1}`.
+- If nested `<main>` elements exist, some screen readers may fail to properly announce the focus transition or may treat the nested region as the primary content area.
+- Nested `<h1>`s confuse the screen reader's document outline, making it harder for users to navigate the page by heading.
+
+With a single landmark and correct heading hierarchy, the error summary's focus management works as designed: focus moves to the alert region, the screen reader announces "There is a problem" immediately, and users can navigate error links to fix each field.
+
+#### Test coverage
+
+Comprehensive tests in `src/app/page.test.tsx` verify the landmark structure and form accessibility end-to-end:
+
+**Landmark and heading structure:**
+- Verifies exactly **one `<main>` landmark** exists (from the layout, not the page)
+- Verifies the page has **no `<h1>` elements** (layout header provides it)
+- Verifies the form uses `<h2>` for the "TalentTrust" section heading
+
+**Form error flow (jest-axe + manual assertions):**
+- `has no accessibility violations on render (empty state)` — form renders with zero WCAG violations when pristine
+- `has no accessibility violations when errors are displayed` — ErrorSummary and field errors render with zero WCAG violations
+- `has no accessibility violations with valid form data` — valid form state passes axe audit
+- `focuses the error summary when errors appear` — `ErrorSummary` ref receives focus immediately on validation failure
+- `error summary anchors correctly target form field ids` — each error link in `ErrorSummary` points to the matching input's `id`
+- `has inputs that are properly labelled and described by error elements when errors occur` — inputs carry correct `aria-invalid`, `aria-describedby`, and error element IDs
+
+**ErrorSummary focus and field linking (interaction-based):**
+- Tests verify that when a form is submitted with missing/invalid data:
+  - The `ErrorSummary` becomes focused (`.toHaveFocus()`)
+  - Each error link has an `href` matching `#fieldId`
+  - The target input element exists and is associated via the link's `href`
+  - The field's `aria-describedby` points to the inline error element
+
+**State-branch coverage:**
+- Tests separately exercise email-only and password-only error paths
+- Tests verify exact error message strings map correctly to field IDs
+- Tests cover the success path where `newErrors.length === 0` and the form submission succeeds (no `ErrorSummary` rendered)
+
+All 33 tests pass with 100% axe compliance and zero violations.
 
 ## Caveats
 
@@ -361,6 +400,39 @@ All states pass axe-core with zero violations.
 
 ---
 
+## FormField – Tested Guarantees (issue #90)
+
+**Component:** `src/components/FormField.tsx`
+**Test files:** `src/components/__tests__/FormField.test.tsx`, `src/components/__tests__/FormFieldRequired.test.tsx`
+
+### Accessibility Prop Injection & Contracts
+
+To ensure robust accessibility structure without requiring boilerplate, `FormField` automatically clones its child form control element (e.g. `<input>`) to inject relevant accessibility and state properties:
+
+| Target Child Prop | Injected / Merged Value | Condition / Context |
+|---|---|---|
+| `id` | Passes the outer `id` prop | Always injected (links with visual `<label htmlFor={id}>`) |
+| `aria-describedby` | Space-separated string of `"{id}-error"` and/or `"{id}-helper"` | Appended if `error` and/or `helperText` are provided; omitted if neither is present |
+| `aria-invalid` | `"true"` or `"false"` | `"true"` if `error` is present, `"false"` otherwise |
+| `aria-required` | `"true"` or `"false"` | `"true"` if `required` is true, `"false"` otherwise |
+| `className` | Merged existing classes with `border-red-500 focus:ring-red-500 focus:border-red-500` | Error classes are only appended if `error` is present; child's original className is always preserved |
+
+### Accessibility Elements and Roles
+
+- **Required Marker & Semantics**: If `required` is true, a visual `*` character (non-color-only cue) is added to the label element and marked with `aria-hidden="true"` to prevent screen readers from reading it redundantly or confusingly (avoiding stray asterisk announcements). The cloned input child also receives `aria-required="true"`, ensuring screen readers announce the field requirement directly and semantically upon focus.
+- **Helper text**: Renders as a `<p>` element with `id={id-helper}`.
+- **Error message**: Renders as a `<p>` element with `id={id-error}` and carrying the **`role="alert"`** attribute to prompt immediate assistive technology notifications.
+
+### jest-axe coverage
+
+We assert compliance using `testA11y` helper from `src/test-utils/a11y.tsx` across the following states:
+1. **Default state**: Basic setup with no helper/error attributes.
+2. **Errored & Labelled state**: Loaded with `error`, `helperText`, and `required` parameters.
+
+All test states run against `axe-core` and must produce zero accessibility violations.
+
+---
+
 ## Keyboard-Accessible Scroll Regions (WCAG 2.1.1)
 
 A scrollable container with no focusable elements inside is unreachable by keyboard-only users, preventing them from scrolling. To solve this, the container itself is made keyboard-focusable and exposed to assistive technologies.
@@ -387,4 +459,206 @@ When the milestone list container is populated, we apply accessibility propertie
 
 Instead of dynamically measuring DOM sizes (e.g. `scrollHeight > clientHeight`) which requires layout execution, we always apply these properties when the list contains items. This guarantees:
 1. **Hydration Consistency**: Identical SSR and client-side HTML output, preventing hydration errors and layout shifts.
-2. **Deterministic JSDOM Testing**: JSDOM does not calculate visual rendering or scroll heights (metrics default to zero). Always applying the attributes when populated ensures unit tests and automated accessibility audits (e.g. `jest-axe`) can inspect and verify the accessibility tree.
+2. **Deterministic JSDOM Testing**: JSDOM does not calculate visual rendering or scroll heights (metrics default to zero). Always applying the attributes when populated ensures unit tests and automated accessibility audits (e.g. `jest-axe`) can inspect and verify the accessibility tree.
+
+---
+
+## prefers-reduced-motion Support (WCAG 2.3.3 Animation from Interactions)
+
+**Standard:** WCAG 2.3.3 — Motion from interactions can be disabled unless essential to functionality or information.
+
+### Implementation
+
+The application respects the `prefers-reduced-motion: reduce` media query to halt non-essential animations and transitions for users who have requested reduced motion via their OS or browser settings.
+
+#### CSS Rules (src/app/globals.css)
+
+A global `@media (prefers-reduced-motion: reduce)` block applies the following:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation: none !important;
+  }
+
+  .animate-shimmer {
+    animation: none !important;
+    background-image: none !important;
+  }
+}
+```
+
+**Key behaviors:**
+- All CSS animations are collapsed to near-instant (0.01ms) duration and run exactly once
+- All CSS transitions snap instantly to their end state (0.01ms duration)
+- Smooth scrolling is disabled (`scroll-behavior: auto`)
+- Tailwind's `animate-spin` utility is explicitly halted (spinner becomes static)
+- The shimmer skeleton animation is frozen (placeholder remains visible but static)
+
+#### Component Implementation
+
+**WalletConnectButton (src/components/WalletConnectButton.tsx)**
+- The connecting spinner uses `animate-spin` unconditionally
+- When `prefers-reduced-motion: reduce` is active, the CSS rule halts the rotation
+- The SVG remains in the DOM and visible as a static loading indicator
+- The "Connecting..." text label remains, ensuring the loading state is perceivable without motion
+
+**ToastProvider (src/components/toast/toast-provider.tsx)**
+- Toast panels and their dismiss button use the `transition` utility for hover/focus states
+- The CSS rule collapses transition durations to 0.01ms, causing instant state changes
+- The `transition` class is **not** stripped from the element — removing it would break themed hover/focus styles
+- Toasts still render and are fully functional; they simply snap into view instead of animating
+
+### Testing
+
+Comprehensive tests in `src/components/__tests__/a11y.test.tsx` verify reduced-motion behavior:
+
+| Test | Verification |
+|------|---------------|
+| `matchMedia returns true for the reduced-motion query` | Mock implementation correctly answers the query |
+| `spinner SVG remains in the DOM while connecting` | Loading indicator stays visible (static circle) |
+| `spinner SVG carries animate-spin class` | Class not stripped — CSS handles the halt |
+| `WalletConnectButton has no axe violations under reduced motion` | Structural a11y maintained when motion is reduced |
+| `success toast snaps into view with no axe violations` | Toast renders cleanly with instant transitions |
+| `error toast snaps into view with no axe violations` | Error toasts also render cleanly |
+| `dismiss button retains its transition class` | Class kept for theming; CSS handles duration collapse |
+| `toast panel is present in the DOM immediately` | No deferred mount — instant snap behavior |
+
+**Mock implementation:**
+The tests use a `mockReducedMotion()` helper that replaces `window.matchMedia` with an implementation that returns `matches: true` only for `(prefers-reduced-motion: reduce)`, simulating a user who has enabled reduced motion in their system preferences.
+
+### Design Philosophy
+
+1. **CSS-first approach:** Motion is gated at the CSS level via media queries, not JavaScript conditionals. This ensures:
+   - No layout shift or flash of animated content before JS executes
+   - Respects system preferences immediately on page load
+   - No additional runtime overhead or conditional rendering logic
+
+2. **Static indicators remain:** Elements that serve as loading indicators (spinner SVG, shimmer skeleton) stay in the DOM and visible. Only the motion is halted, not the presence of the element itself. This ensures users can still perceive loading states without animation.
+
+3. **Transitions snap, don't disappear:** CSS transition classes are retained; the media query collapses their duration. This preserves hover/focus styling that depends on the `transition` utility while eliminating the motion.
+
+### Verification
+
+To verify reduced-motion behavior:
+1. Enable reduced motion in your OS (macOS: System Settings → Accessibility → Display → "Reduce motion"; Windows: Settings → Ease of Access → Display → "Show animations")
+2. Navigate to the application
+3. Trigger a wallet connection — the spinner should appear as a static circle, not rotating
+4. Trigger a toast notification — it should appear instantly without slide/fade animation
+5. Hover over interactive elements — state changes should be instant, not gradual
+
+All automated tests pass with zero axe violations under reduced-motion conditions.
+
+---
+
+## Shared modal focus trap
+
+Modal dialogs use the shared `useDialogFocusTrap` hook in
+`src/hooks/useDialogFocusTrap.ts`. This hook contains the keyboard mechanism
+originally used inline by `ConfirmDialog`, so dialog components do not create
+slightly different focus-trap implementations.
+
+The hook receives refs for the dialog container and its initial-focus target,
+plus the dialog's Escape callback. While the dialog is open it:
+
+1. Moves focus to the configured initial element.
+2. Wraps `Tab` from the last enabled focusable element to the first.
+3. Wraps `Shift+Tab` from the first enabled focusable element to the last.
+4. Prevents the default Escape action and invokes the supplied close callback.
+5. Optionally captures and restores the element that had focus immediately
+   before the dialog opened.
+
+`ConfirmDialog` now consumes this shared hook while continuing to let its
+owning action component restore focus, preserving its existing public
+behavior. `MilestoneCreationForm` enables the hook's `restoreFocus` option:
+focus initially lands on the Title field, remains inside the modal while
+tabbing, Escape calls `onCancel`, and every unmount/close path restores focus
+to the button that opened the form.
+
+Regression coverage lives in
+`src/components/__tests__/MilestoneDialogFocus.test.tsx`. It covers initial
+focus, forward and backward wrapping, Escape, Cancel and parent-controlled
+closing, successful submission, a single enabled focus target, missing or
+empty dialog containers, and repeated open/close cycles.
+
+## Breadcrumbs — Nav Landmark, aria-current, and Focus Ring (issue #440)
+
+**Component:** `src/components/Breadcrumbs.tsx`
+**Test file:** `src/components/__tests__/Breadcrumbs.test.tsx`, plus two `jest-axe` states in `src/components/__tests__/a11y.test.tsx`
+
+### What was already correct
+
+Most of this issue's requirements were already implemented when the issue was
+filed: the trail is wrapped in `<nav aria-label="Breadcrumb">` containing an
+`<ol>`, the final crumb renders as non-interactive text with
+`aria-current="page"` instead of a link, and the `/` separators between
+crumbs are marked `aria-hidden="true"`. The one gap was the focus ring on
+the ancestor `<Link>` crumbs.
+
+### Problem found
+
+The ancestor links used a hardcoded `focus-visible:outline-blue-500`
+(Tailwind's fixed `blue-500`, `#3b82f6`) rather than the app's `--ring`
+theme token. Two issues with that:
+
+1. **Wrong color in light mode.** Light mode's own `--ring` token is
+   `#2563eb`, not `blue-500`. The hardcoded class happened to render the
+   *dark*-mode ring color even when the theme was light.
+2. **Not theme-aware.** Every other focus-visible ring in this codebase that
+   follows the current convention (`MilestonesList.tsx`,
+   `toast-provider.tsx`, `SettingsPanel.tsx`) uses
+   `focus-visible:ring-[var(--ring)]` so the color swaps with
+   `[data-theme='dark']`. The hardcoded class didn't, so it was already
+   inconsistent with the rest of the app even before considering contrast.
+
+### Fix
+
+Replaced the hardcoded outline with the same pattern used elsewhere:
+
+```tsx
+className="... rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
+```
+
+### Contrast verification
+
+Breadcrumbs are only mounted on the contract detail page
+(`src/app/contracts/[id]/page.tsx`), inside a card with a **hardcoded
+`bg-white`** container that does not vary with `[data-theme]`. That matters
+for this specific check: the ring's *color* is theme-aware (`--ring` swaps
+value), but the *background it's drawn against* does not swap, so both
+themes' ring colors were checked against the same white card rather than
+against `--background`.
+
+| Theme | `--ring` value | Rendered against | Ratio |
+|---|---|---|---|
+| Light | `#2563eb` | white card (`#ffffff`) | 5.17:1 ✅ |
+| Dark | `#3b82f6` | white card (`#ffffff`) — card itself isn't theme-aware | 3.68:1 ✅ |
+
+Both clear the WCAG 2.1 non-text contrast minimum of 3:1 (SC 1.4.11), computed
+with the same relative-luminance method used elsewhere in this document.
+Dark mode has noticeably less headroom (3.68:1 vs. a 3:1 floor) than light
+mode, entirely because the card background doesn't adapt to the theme —
+flagging this since it's the kind of narrow-margin pairing this document
+has previously called out as worth tracking. Making the contract-detail
+card itself theme-aware is a separate, larger change (it touches the whole
+page, not just this component) and is out of scope for this issue.
+
+### Testing
+
+- `Breadcrumbs.test.tsx` — structure/ARIA (nav landmark, `<ol>`, one `<li>`
+  per crumb), link generation, `aria-current` placement, separator
+  `aria-hidden`, dynamic labels, and three new focus-ring assertions: the
+  token classes are present on every ancestor link, and the old
+  `outline-blue-500` class is confirmed absent (regression guard).
+- `a11y.test.tsx` — `jest-axe` audit for a single-crumb trail and a
+  three-crumb trail with a current page, both zero violations.

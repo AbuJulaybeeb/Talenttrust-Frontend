@@ -85,3 +85,76 @@ body {
   background: var(--background);
   font-feature-settings: "rlig" 1, "calt" 1;
 }
+
+/* prefers-reduced-motion: halt all animations and transitions for users
+   who have requested reduced motion via their OS/browser settings.
+   - animate-spin (and any Tailwind animation utility) is stopped by
+     setting animation to none.
+   - All CSS transitions are collapsed to instant (duration 0ms) so
+     elements snap to their end state without motion.
+   - scroll-behavior is set to auto to prevent smooth scrolling.
+   Elements that serve as static loading indicators (e.g. the spinner SVG
+   inside WalletConnectButton) remain visible in the DOM; only the
+   rotation is halted so the indicator is still perceivable. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Explicitly stop Tailwind's animate-spin so the spinner SVG becomes
+     a static circle rather than a continuously rotating element. The
+     element remains in the DOM and is still visible as a loading cue. */
+  .animate-spin {
+    animation: none !important;
+  }
+
+  /* Freeze the shimmer skeleton animation. The block remains visible as
+     a static grey placeholder so users with reduced-motion still perceive
+     the loading state without any movement. */
+  .animate-shimmer {
+    animation: none !important;
+    background-image: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Shimmer keyframe for LoadingSkeleton
+ *
+ * Creates a left-to-right highlight sweep using a CSS gradient and
+ * background-position animation. The gradient is positioned so the bright
+ * band starts off-screen to the left (-200% background-position) and
+ * travels to the right (200%). background-size is set to 200% so the sweep
+ * covers the full element width exactly once per cycle.
+ *
+ * This class is intentionally defined inside @layer utilities so Tailwind's
+ * purge process does not strip it, and so it can be overridden by any
+ * Tailwind utility class at the same specificity layer.
+ * --------------------------------------------------------------------------- */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@layer utilities {
+  .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      #e2e8f0 0%,
+      #f1f5f9 40%,
+      #e2e8f0 60%,
+      #e2e8f0 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+}

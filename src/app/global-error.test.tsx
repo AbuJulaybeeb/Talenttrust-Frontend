@@ -57,7 +57,7 @@ describe('GlobalError page', () => {
     render(<GlobalError error={testError} reset={mockReset} />);
     
     expect(mockReporter).toHaveBeenCalledTimes(1);
-    expect(mockReporter).toHaveBeenCalledWith(testError, 'Global Error Boundary');
+    expect(mockReporter).toHaveBeenCalledWith(testError, 'Global Error Boundary', undefined, undefined);
   });
 
   it('is accessible and clean of violations via jest-axe', async () => {

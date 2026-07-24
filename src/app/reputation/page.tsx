@@ -34,7 +34,7 @@ export function ReputationPageContent({
       <ReputationProfile
         name={userName}
         score={score}
-        level={reputationData.level ?? 'Community Member'}
+        level={reputationData.level}
         history={reputationData.history}
       />
     </main>

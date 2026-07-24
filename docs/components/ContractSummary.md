@@ -26,4 +26,5 @@ The component supports copying the full address of any party to the system clipb
 - **Toast Notifications**:
   - Displays a success toast upon successful copy.
   - Displays an error toast if browser clipboard API access fails or is rejected.
-- **Accessibility**: The copy control is a standard `<button>` with an explicit `aria-label` identifying the target party (e.g., `Copy Client address to clipboard`), ensuring compatibility with screen readers.
+- **Accessibility**: The copy control is a standard `<button>` with an explicit `aria-label` identifying the target party (e.g., `Copy Client address to clipboard`).
+  When a copy succeeds, the control updates its accessible name to reflect the copied state (e.g., `Client address copied`) for direct screen reader confirmation.

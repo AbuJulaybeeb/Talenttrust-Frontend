@@ -3,11 +3,23 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import ContractsPage, { getContractsAnnouncementMessage } from '../page';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import ContractsPage from '../page';
 import * as repository from '@/lib/repository';
+
 import * as stellarAddress from '@/lib/stellarAddress';
 
+
 // Mock dependencies
-jest.mock('@/lib/repository');
+jest.mock('@/lib/repository', () => {
+  const actual = jest.requireActual('@/lib/repository');
+
+  return {
+    ...actual,
+    listContracts: jest.fn(actual.listContracts),
+    saveContract: jest.fn(actual.saveContract),
+  };
+});
 jest.mock('@/lib/stellarAddress');
 
 const mockListContracts = repository.listContracts as jest.MockedFunction<
@@ -27,7 +39,7 @@ describe('ContractsPage', () => {
     jest.clearAllMocks();
     localStorage.clear();
     mockListContracts.mockReturnValue([]);
-    mockIsValidStellarAddress.mockImplementation((addr: string) => addr === VALID_ADDRESS);
+    mockIsValidStellarAddress.mockImplementation((addr: string | null | undefined) => addr === VALID_ADDRESS);
   });
 
   describe('live region announcements', () => {
@@ -293,7 +305,7 @@ describe('ContractsPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
       // Try to submit empty form
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
         expect(screen.getByRole('alert', { name: /there is a problem/i })).toBeInTheDocument();
@@ -327,12 +339,11 @@ describe('ContractsPage', () => {
       fireEvent.change(partyAddresses[1], { target: { value: VALID_ADDRESS } });
 
       // Submit form
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
-        expect(screen.getAllByText(/party 1 address must be a valid stellar address/i).length).toBeGreaterThan(0);
+        expect(screen.getAllByText(/party 1 address must be a valid stellar address/i)[0]).toBeInTheDocument();
       });
-
       expect(mockSaveContract).not.toHaveBeenCalled();
     });
   });
@@ -376,13 +387,13 @@ describe('ContractsPage', () => {
         totalValue: 7500,
         currency: 'EUR',
         status: 'Pending' as const,
-        createdAt: 'Apr 20, 2026',
+        createdAt: 'Jan 1, 2025',
         milestoneCount: 0,
       };
       mockListContracts.mockReturnValue([newContract]);
 
       // Submit form
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
         expect(mockSaveContract).toHaveBeenCalledTimes(1);
@@ -449,7 +460,7 @@ describe('ContractsPage', () => {
       ]);
 
       // Submit form
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -499,7 +510,7 @@ describe('ContractsPage', () => {
       };
       mockListContracts.mockReturnValue([createdContract]);
 
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
         expect(screen.getByText('My First Contract')).toBeInTheDocument();
@@ -530,10 +541,10 @@ describe('ContractsPage', () => {
       fireEvent.change(partyLabels[0], { target: { value: 'Client' } });
       fireEvent.change(partyAddresses[0], { target: { value: VALID_ADDRESS } });
 
-      fireEvent.click(screen.getByRole('button', { name: /^create contract$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
 
       await waitFor(() => {
-        expect(screen.getAllByText(/at least two parties are required/i).length).toBeGreaterThan(0);
+        expect(screen.getAllByText(/at least two parties are required/i)[0]).toBeInTheDocument();
       });
     });
   });
@@ -543,7 +554,7 @@ describe('ContractsPage', () => {
       mockListContracts.mockReturnValue([]);
       render(<ContractsPage />);
 
-      expect(screen.getAllByRole('heading', { name: /contracts/i })[0]).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Contracts', level: 1 })).toBeInTheDocument();
     });
 
     it('renders main landmark', () => {
@@ -555,17 +566,18 @@ describe('ContractsPage', () => {
   });
 
   it('renders persisted contracts when storage already contains data', () => {
-    const existingContract = {
-      contractName: 'Existing Contract',
-      parties: [],
-      totalValue: 1000,
-      currency: 'USD',
-      status: 'Active' as const,
-      createdAt: 'Apr 20, 2026',
-      milestoneCount: 1,
-    };
-
-    mockListContracts.mockReturnValue([existingContract]);
+    const existingContracts = [
+      {
+        contractName: 'Existing Contract',
+        parties: [],
+        totalValue: 1000,
+        currency: 'USD',
+        status: 'Active' as const,
+        createdAt: 'Apr 20, 2026',
+        milestoneCount: 1,
+      },
+    ];
+    mockListContracts.mockReturnValue(existingContracts);
 
     render(<ContractsPage />);
 
@@ -573,15 +585,48 @@ describe('ContractsPage', () => {
     expect(screen.getByText(/Active · Created Apr 20, 2026/)).toBeInTheDocument();
   });
 
-  it('creates and persists a new contract from the empty state action', async () => {
-    const user = userEvent.setup();
-    jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
-
+  it('calls saveContract and refreshes contracts on form submission', async () => {
     mockListContracts.mockReturnValue([]);
     render(<ContractsPage />);
 
-    await user.click(screen.getByRole('button', { name: 'Create Contract' }));
+    // Open the form
+    fireEvent.click(screen.getByRole('button', { name: 'Create Contract' }));
 
-    expect(screen.getByText('Create New Contract')).toBeInTheDocument();
+    // Fill in the form
+    fireEvent.change(screen.getByLabelText(/contract name/i), {
+      target: { value: 'My New Contract' },
+    });
+    fireEvent.change(screen.getByLabelText(/total value/i), {
+      target: { value: '1000' },
+    });
+    const partyLabels = screen.getAllByPlaceholderText(/e\.g\., client, freelancer/i);
+    const partyAddresses = screen.getAllByPlaceholderText(/GXXXXXXXXXX/i);
+    fireEvent.change(partyLabels[0], { target: { value: 'Client' } });
+    fireEvent.change(partyAddresses[0], { target: { value: VALID_ADDRESS } });
+    fireEvent.change(partyLabels[1], { target: { value: 'Freelancer' } });
+    fireEvent.change(partyAddresses[1], { target: { value: VALID_ADDRESS } });
+
+    const newContract = {
+      contractName: 'My New Contract',
+      parties: [
+        { label: 'Client', address: VALID_ADDRESS },
+        { label: 'Freelancer', address: VALID_ADDRESS },
+      ],
+      totalValue: 1000,
+      currency: 'USD',
+      status: 'Pending' as const,
+      createdAt: 'Jan 1, 2025',
+      milestoneCount: 0,
+    };
+    mockListContracts.mockReturnValue([newContract]);
+
+    // Submit the form
+    fireEvent.click(screen.getByRole('button', { name: /create contract/i, hidden: false }));
+
+    await waitFor(() => {
+      expect(mockSaveContract).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockListContracts).toHaveBeenCalled();
   });
 });

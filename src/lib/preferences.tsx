@@ -1,12 +1,24 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getItem, setItem } from './safeStorage';
-
 
 export type Theme = 'light' | 'dark' | 'system';
 export type AmountFormat = 'usd' | 'ngn' | 'compact';
 export type ToastDensity = 'relaxed' | 'compact';
+/**
+ * Controls the default auto-dismiss duration for toasts when the caller does
+ * not supply an explicit `duration`.
+ *
+ * | Value          | Duration  | Notes                              |
+ * |----------------|-----------|------------------------------------|
+ * | `'short'`      | 2 500 ms  | Quick, low-priority confirmations  |
+ * | `'normal'`     | 5 000 ms  | Default – matches legacy behaviour |
+ * | `'long'`       | 10 000 ms | Complex messages or slow readers   |
+ * | `'persistent'` | ∞         | Toast stays until manually closed  |
+ */
+export type ToastDuration = 'short' | 'normal' | 'long' | 'persistent';
 
 /**
  * Safely format a number as currency, falling back to USD if the provided currency code is invalid.
@@ -14,17 +26,18 @@ export type ToastDensity = 'relaxed' | 'compact';
 function safeCurrencyFormat(
   amount: number,
   currency: string,
+  locale: string = 'en-US',
   options: Intl.NumberFormatOptions = {}
 ): string {
   const defaultCurrency = 'USD';
   try {
-    return new Intl.NumberFormat(options.locale || 'en-US', {
+    return new Intl.NumberFormat(locale, {
       ...options,
       style: 'currency',
       currency,
     }).format(amount);
-  } catch (e) {
-    return new Intl.NumberFormat(options.locale || 'en-US', {
+  } catch (_e) {
+    return new Intl.NumberFormat(locale, {
       ...options,
       style: 'currency',
       currency: defaultCurrency,
@@ -37,6 +50,12 @@ export interface UserPreferences {
   amountFormat: AmountFormat;
   toastDensity: ToastDensity;
   quietMode: boolean;
+  toastDuration: ToastDuration;
+  /**
+   * Idle auto-disconnect timeout in milliseconds. 0 disables the feature.
+   * Allowed values: 0 or between 5000 ms and 30000 ms.
+   */
+  idleDisconnectMs: number;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -44,7 +63,43 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   amountFormat: 'usd',
   toastDensity: 'relaxed',
   quietMode: false,
+  toastDuration: 'normal',
+  idleDisconnectMs: 0,
 };
+
+/**
+ * Whitelisted keys we accept from untrusted storage. Anything else is dropped
+ * before the spread merge to prevent unknown properties from leaking into state.
+ *
+ * Defined as a typed `Set` so `.has(key)` narrows correctly without casts.
+ */
+const KNOWN_KEYS: ReadonlySet<keyof UserPreferences> = new Set([
+  'theme',
+  'amountFormat',
+  'toastDensity',
+  'quietMode',
+  'toastDuration',
+  'idleDisconnectMs',
+]);
+
+/**
+ * Property names that must never survive sanitization, regardless of source.
+ * These are rejected because they have historically been used to hijack
+ * prototypes during shallow merges (Object.assign, naive spreads, recursive
+ * merge helpers, etc.).
+ */
+const DANGEROUS_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Allowed enum-like values per field. Used to validate the runtime type of
+ * a parsed payload before it is merged into preferences.
+ *
+ * Typed Sets narrow `unknown` to the field's enum literal without casts.
+ */
+const ALLOWED_THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
+const ALLOWED_AMOUNT_FORMATS: ReadonlySet<AmountFormat> = new Set(['usd', 'ngn', 'compact']);
+const ALLOWED_TOAST_DENSITIES: ReadonlySet<ToastDensity> = new Set(['relaxed', 'compact']);
+const ALLOWED_TOAST_DURATIONS: ReadonlySet<ToastDuration> = new Set(['short', 'normal', 'long', 'persistent']);
 
 interface PreferencesContextType {
   preferences: UserPreferences;
@@ -56,18 +111,127 @@ const PreferencesContext = createContext<PreferencesContextType | undefined>(und
 
 const STORAGE_KEY = 'talenttrust-user-preferences';
 
+/**
+ * Sanitize an untrusted, already-JSON-parsed value into a valid
+ * {@link UserPreferences} object.
+ *
+ * Defense-in-depth against malformed and prototype-polluting input read from
+ * `localStorage` (or any other untrusted source):
+ *
+ * - Returns a fresh copy of {@link DEFAULT_PREFERENCES} when `raw` is `null`,
+ *   a primitive, or an array — these cannot represent preferences.
+ * - Iterates only the parsed object's **own** enumerable string keys
+ *   (`Object.keys`) so inherited prototype keys can never reach the merge step.
+ * - Rejects `__proto__`, `constructor`, and `prototype` keys outright so a
+ *   spread or `Object.assign` downstream cannot rewire the prototype chain.
+ * - Whitelists the five known keys (`theme`, `amountFormat`, `toastDensity`,
+ *   `quietMode`, `toastDuration`) and validates each value against its allowed
+ *   set. Unknown keys are silently dropped; invalid values fall back to the
+ *   default.
+ *
+ * Booleans are checked with `typeof === 'boolean'` (not truthiness) so values
+ * like `1`, `"true"`, or an object cannot be coerced into a `quietMode` flag.
+ *
+ * The helper is pure and total — it never throws, returns the same shape for
+ * any input, and is safe to unit-test in isolation.
+ *
+ * @param raw - A value already deserialised from storage (e.g. `JSON.parse`).
+ * @returns A pristine, fully-typed `UserPreferences` object.
+ */
+export function sanitizePreferences(raw: unknown): UserPreferences {
+  // Fast path: must be a plain object (not null, not array, not primitive).
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ...DEFAULT_PREFERENCES };
+  }
+
+  // Each local carries the precise runtime type expected for its field, so
+  // the final return is well-typed without any cast. Invalid values simply
+  // leave the local at its default value.
+  let theme: Theme = DEFAULT_PREFERENCES.theme;
+  let amountFormat: AmountFormat = DEFAULT_PREFERENCES.amountFormat;
+  let toastDensity: ToastDensity = DEFAULT_PREFERENCES.toastDensity;
+  let quietMode: boolean = DEFAULT_PREFERENCES.quietMode;
+  let toastDuration: ToastDuration = DEFAULT_PREFERENCES.toastDuration;
+  let idleDisconnectMs: number = DEFAULT_PREFERENCES.idleDisconnectMs;
+
+  for (const key of Object.keys(raw as object)) {
+    // Drop dangerous keys regardless of value. These are the keys historically
+    // used for prototype pollution during shallow merges.
+    if (DANGEROUS_KEYS.has(key)) {
+      continue;
+    }
+    // Drop any unknown key — only known preferences may flow into state.
+    if (!KNOWN_KEYS.has(key as keyof UserPreferences)) {
+      continue;
+    }
+    const value = (raw as Record<string, unknown>)[key];
+
+    switch (key) {
+      case 'theme':
+        // Cast at the call AND the assignment: `Set.has` does not narrow
+        // `unknown` value on its own, but membership is verified at runtime.
+        if (typeof value === 'string' && ALLOWED_THEMES.has(value as Theme)) {
+          theme = value as Theme;
+        }
+        break;
+      case 'amountFormat':
+        if (typeof value === 'string' && ALLOWED_AMOUNT_FORMATS.has(value as AmountFormat)) {
+          amountFormat = value as AmountFormat;
+        }
+        break;
+      case 'toastDensity':
+        if (typeof value === 'string' && ALLOWED_TOAST_DENSITIES.has(value as ToastDensity)) {
+          toastDensity = value as ToastDensity;
+        }
+        break;
+      case 'quietMode':
+        if (typeof value === 'boolean') {
+          quietMode = value;
+        }
+        break;
+      case 'toastDuration':
+        // Cast at call site and assignment: Set.has does not narrow `unknown`
+        // on its own, but membership is verified at runtime.
+        if (typeof value === 'string' && ALLOWED_TOAST_DURATIONS.has(value as ToastDuration)) {
+          toastDuration = value as ToastDuration;
+        }
+        break;
+      case 'idleDisconnectMs':
+        if (typeof value === 'number') {
+          const min = 5000;
+          const max = 30000;
+          if (value === 0 || (value >= min && value <= max)) {
+            idleDisconnectMs = value;
+          }
+        }
+        break;
+    }
+  }
+
+  return { theme, amountFormat, toastDensity, quietMode, toastDuration, idleDisconnectMs };
+}
+
+/**
+ * Provides sanitized, persisted user preferences and applies the effective
+ * document theme. See `docs/preferences.md` for the hydration, persistence,
+ * system-theme, and amount-formatting contract.
+ */
 export function PreferencesProvider({ children }: { children: React.ReactNode }) {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [isHydrated, setIsHydrated] = useState(false);
+  const systemPrefersDark = useMediaQuery('(prefers-color-scheme: dark)');
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount. Every value is routed through
+  // `sanitizePreferences` so tampered, corrupted, or prototype-polluting
+  // payloads cannot reach React state.
   useEffect(() => {
     const saved = getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setPreferences({ ...DEFAULT_PREFERENCES, ...JSON.parse(saved) });
-      } catch (e) {
-        console.error('Failed to parse preferences', e);
+        const parsed: unknown = JSON.parse(saved);
+        setPreferences(sanitizePreferences(parsed));
+      } catch (_e) {
+        console.error('Failed to parse preferences', _e);
       }
     }
     setIsHydrated(true);
@@ -87,7 +251,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       let effectiveTheme = theme;
 
       if (theme === 'system') {
-        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        effectiveTheme = systemPrefersDark ? 'dark' : 'light';
       }
 
       root.setAttribute('data-theme', effectiveTheme);
@@ -96,15 +260,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     };
 
     applyTheme(preferences.theme);
-
-    // Listener for system theme changes
-    if (preferences.theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const listener = () => applyTheme('system');
-      mediaQuery.addEventListener('change', listener);
-      return () => mediaQuery.removeEventListener('change', listener);
-    }
-  }, [preferences.theme]);
+  }, [preferences.theme, systemPrefersDark]);
 
   const updatePreference = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
     setPreferences(prev => ({ ...prev, [key]: value }));
@@ -123,15 +279,12 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     const locale = amountFormat === 'ngn' ? 'en-NG' : 'en-US';
 
     if (amountFormat === 'compact') {
-      return safeCurrencyFormat(amount, activeCurrency, {
-        locale: 'en-US',
+      return safeCurrencyFormat(amount, activeCurrency, 'en-US', {
         notation: 'compact',
       });
     }
 
-    return safeCurrencyFormat(amount, activeCurrency, {
-      locale,
-    });
+    return safeCurrencyFormat(amount, activeCurrency, locale);
   };
 
   return (
@@ -141,6 +294,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   );
 }
 
+/**
+ * Read preference state and helpers from {@link PreferencesProvider}.
+ *
+ * When no provider is mounted, this hook intentionally returns defaults plus
+ * no-op helpers so isolated tests can render preference-aware components.
+ * See `docs/preferences.md#provider-less-fallback` for the fallback contract.
+ */
 export function usePreferences() {
   const context = useContext(PreferencesContext);
   if (context === undefined) {
@@ -149,7 +309,7 @@ export function usePreferences() {
       preferences: DEFAULT_PREFERENCES,
       updatePreference: () => {},
       formatAmount: (amount: number, currency: string = 'USD') => 
-        safeCurrencyFormat(amount, currency, { locale: 'en-US' }),
+        safeCurrencyFormat(amount, currency, 'en-US'),
     };
   }
   return context;

@@ -6,11 +6,12 @@ import React from 'react';
  * The set of statuses a user can filter milestones by.
  * "All" is the default and shows every milestone regardless of status.
  */
-export type MilestoneStatusFilter = 'All' | 'Pending' | 'Completed' | 'Paid' | 'Disputed';
+export type MilestoneStatusFilter = 'All' | 'Active' | 'Pending' | 'Completed' | 'Paid' | 'Disputed';
 
 /** Ordered list of filter options rendered in the radiogroup. */
 const FILTER_OPTIONS: MilestoneStatusFilter[] = [
   'All',
+  'Active',
   'Pending',
   'Completed',
   'Paid',

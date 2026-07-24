@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import RouteAnnouncer from '../RouteAnnouncer';
 
-const mockUsePathname = jest.fn<() => string>();
+const mockUsePathname = jest.fn(() => '');
 
 jest.mock('next/navigation', () => ({
   usePathname: () => mockUsePathname(),

@@ -22,4 +22,5 @@ export type {
 export type Contract = ContractSummaryProps;
 
 /** Canonical reputation profile shape for list and detail views. */
-export type Reputation = ReputationProfileProps;
+export type Reputation = Omit<ReputationProfileProps, 'name'> & { name?: string };
+

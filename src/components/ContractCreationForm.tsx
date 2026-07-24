@@ -4,7 +4,11 @@ import React, { useState, useCallback, FormEvent } from 'react';
 import { FormField } from './FormField';
 import { ErrorSummary } from './ErrorSummary';
 import { isValidStellarAddress } from '@/lib/stellarAddress';
+import { sanitizeUserText } from '@/lib/sanitizeUserText';
 import type { Contract } from '@/types/domain';
+
+export const MAX_CONTRACT_NAME_LENGTH = 200;
+export const MAX_PARTY_LABEL_LENGTH = 100;
 
 export interface ContractFormData {
   contractName: string;
@@ -51,10 +55,17 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     const validationErrors: Array<{ fieldId: string; message: string }> = [];
 
     // Validate contract name
-    if (!contractName.trim()) {
+    const sanitizedContractName = sanitizeUserText(contractName, MAX_CONTRACT_NAME_LENGTH);
+    const unboundedContractName = sanitizeUserText(contractName, Number.MAX_SAFE_INTEGER);
+    if (!sanitizedContractName) {
       validationErrors.push({
         fieldId: 'contractName',
         message: 'Contract name is required',
+      });
+    } else if (unboundedContractName.length > MAX_CONTRACT_NAME_LENGTH) {
+      validationErrors.push({
+        fieldId: 'contractName',
+        message: `Contract name must be no more than ${MAX_CONTRACT_NAME_LENGTH} characters`,
       });
     }
 
@@ -81,7 +92,9 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     }
 
     // Validate parties
-    const filledParties = parties.filter(p => p.label.trim() || p.address.trim());
+    const filledParties = parties.filter(
+      p => sanitizeUserText(p.label, MAX_PARTY_LABEL_LENGTH) || p.address.trim(),
+    );
     if (filledParties.length < 2) {
       validationErrors.push({
         fieldId: 'parties',
@@ -91,7 +104,9 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
 
     // Validate individual party fields
     parties.forEach((party, index) => {
-      const hasLabel = party.label.trim();
+      const sanitizedLabel = sanitizeUserText(party.label, MAX_PARTY_LABEL_LENGTH);
+      const unboundedLabel = sanitizeUserText(party.label, Number.MAX_SAFE_INTEGER);
+      const hasLabel = sanitizedLabel;
       const hasAddress = party.address.trim();
 
       // If either field is filled, both must be filled
@@ -100,6 +115,12 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
           validationErrors.push({
             fieldId: `party-label-${index}`,
             message: `Party ${index + 1} label is required`,
+          });
+        }
+        if (unboundedLabel.length > MAX_PARTY_LABEL_LENGTH) {
+          validationErrors.push({
+            fieldId: `party-label-${index}`,
+            message: `Party ${index + 1} label must be no more than ${MAX_PARTY_LABEL_LENGTH} characters`,
           });
         }
 
@@ -135,10 +156,15 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
       }
 
       // Filter out empty parties and construct the contract
-      const validParties = parties.filter(p => p.label.trim() && p.address.trim());
+      const validParties = parties
+        .filter(p => sanitizeUserText(p.label, MAX_PARTY_LABEL_LENGTH) && p.address.trim())
+        .map(p => ({
+          ...p,
+          label: sanitizeUserText(p.label, MAX_PARTY_LABEL_LENGTH),
+        }));
       
       const contract: Contract = {
-        contractName: contractName.trim(),
+        contractName: sanitizeUserText(contractName, MAX_CONTRACT_NAME_LENGTH),
         parties: validParties,
         totalValue: parseFloat(totalValue),
         currency: currency.trim(),
@@ -280,6 +306,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                     label="Label"
                     id={`party-label-${index}`}
                     error={getFieldError(`party-label-${index}`)}
+                    required
                   >
                     <input
                       type="text"
@@ -295,6 +322,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                     id={`party-address-${index}`}
                     error={getFieldError(`party-address-${index}`)}
                     helperText="56-character address starting with G"
+                    required
                   >
                     <input
                       type="text"

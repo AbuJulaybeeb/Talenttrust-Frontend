@@ -9,6 +9,10 @@ describe('stellarAddress helpers', () => {
     expect(normalizeStellarAddress(VALID_KEY.toLowerCase())).toBe(VALID_KEY);
   });
 
+  it('normalizes surrounding whitespace and casing before validation', () => {
+    expect(isValidStellarAddress(`  ${VALID_KEY.toLowerCase()}  `)).toBe(true);
+  });
+
   it('rejects keys with an invalid StrKey checksum', () => {
     expect(isValidStellarAddress('GABQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')).toBe(false);
     expect(isValidStellarAddress('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7I')).toBe(false);
@@ -29,11 +33,18 @@ describe('stellarAddress helpers', () => {
     expect(isValidStellarAddress(VALID_KEY + 'A')).toBe(false);
   });
 
-  it('normalizes whitespace and case without throwing for invalid input', () => {
-    const normalized = `GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H`;
-    expect(normalizeStellarAddress(`  ${normalized.toLowerCase()}  `)).toBe(normalized);
+  it('normalizes whitespace and case without touching already-normalized values', () => {
+    expect(normalizeStellarAddress(`  ${VALID_KEY.toLowerCase()}  `)).toBe(VALID_KEY);
+    expect(normalizeStellarAddress(`\n\t${VALID_KEY}\r\n`)).toBe(VALID_KEY);
+    expect(normalizeStellarAddress(VALID_KEY)).toBe(VALID_KEY);
+  });
+
+  it('returns an empty string for blank and non-string input', () => {
     expect(normalizeStellarAddress('')).toBe('');
-    expect(normalizeStellarAddress(undefined as unknown as string)).toBe('');
+    expect(normalizeStellarAddress('   ')).toBe('');
+    expect(normalizeStellarAddress(null)).toBe('');
+    expect(normalizeStellarAddress(undefined)).toBe('');
+    expect(normalizeStellarAddress(12345 as unknown as string)).toBe('');
     expect(isValidStellarAddress('   ')).toBe(false);
   });
 

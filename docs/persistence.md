@@ -10,8 +10,8 @@ All persistence logic is centralised in `src/lib/repository.ts`.
 
 ## Storage Namespace
 
-| Key | Location | Format |
-|-----|----------|--------|
+| Key                    | Location              | Format      |
+| ---------------------- | --------------------- | ----------- |
 | `talenttrust_app_data` | `window.localStorage` | JSON string |
 
 A single key houses both data collections under one object, avoiding key proliferation and making it straightforward to clear all app data in one call (`localStorage.removeItem('talenttrust_app_data')`).
@@ -22,33 +22,33 @@ A single key houses both data collections under one object, avoiding key prolife
 
 ```ts
 interface AppData {
-  contracts: Contract[];   // from src/components/ContractSummary
+  contracts: Contract[]; // from src/components/ContractSummary
   milestones: Milestone[]; // from src/components/MilestonesList
 }
 ```
 
 ### Contract fields
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `contractName` | `string` | User-facing display name |
-| `parties` | `ContractParty[]` | Label + wallet address pairs |
-| `totalValue` | `number` | Numeric amount (no currency symbol) |
-| `currency` | `string` | ISO 4217 code, e.g. `"USD"` |
-| `status` | `StatusType` | One of: `Active`, `Completed`, `Disputed`, `Pending`, `Paid` |
-| `createdAt` | `string` | Human-readable date string |
-| `milestoneCount` | `number` | Count of linked milestones |
+| Field            | Type              | Notes                                                        |
+| ---------------- | ----------------- | ------------------------------------------------------------ |
+| `contractName`   | `string`          | User-facing display name                                     |
+| `parties`        | `ContractParty[]` | Label + wallet address pairs                                 |
+| `totalValue`     | `number`          | Numeric amount (no currency symbol)                          |
+| `currency`       | `string`          | ISO 4217 code, e.g. `"USD"`                                  |
+| `status`         | `StatusType`      | One of: `Active`, `Completed`, `Disputed`, `Pending`, `Paid` |
+| `createdAt`      | `string`          | Human-readable date string                                   |
+| `milestoneCount` | `number`          | Count of linked milestones                                   |
 
 ### Milestone fields
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | `string` | Caller-assigned unique identifier |
-| `title` | `string` | User-facing display name |
-| `status` | `StatusType` | One of: `Active`, `Completed`, `Disputed`, `Pending`, `Paid` |
-| `payout` | `number` | Numeric amount |
-| `currency` | `string` | ISO 4217 code |
-| `dueDate` | `string \| undefined` | Optional human-readable due date |
+| Field      | Type                  | Notes                                                        |
+| ---------- | --------------------- | ------------------------------------------------------------ |
+| `id`       | `string`              | Caller-assigned unique identifier                            |
+| `title`    | `string`              | User-facing display name                                     |
+| `status`   | `StatusType`          | One of: `Active`, `Completed`, `Disputed`, `Pending`, `Paid` |
+| `payout`   | `number`              | Numeric amount                                               |
+| `currency` | `string`              | ISO 4217 code                                                |
+| `dueDate`  | `string \| undefined` | Optional human-readable due date                             |
 
 ---
 
@@ -58,6 +58,15 @@ interface AppData {
 - **Client-only.** Data never leaves the device via this module. `localStorage` is scoped to the origin (`http(s)://hostname:port`) and is inaccessible to other origins.
 - **No encryption at rest.** `localStorage` is plain-text. Avoid storing sensitive secrets (private keys, session tokens) here. This module stores only display-level metadata.
 - **XSS surface.** Like all `localStorage` usage, stored values are readable by any script running in the same origin. The application relies on standard XSS mitigations (CSP headers configured in `next.config.js`, input sanitisation) to prevent malicious reads.
+- **Per-value size cap.** `src/lib/safeStorage.ts` rejects individual writes larger than `MAX_VALUE_BYTES` before calling `localStorage.setItem`. The default cap is 128 KiB using a UTF-16 byte estimate (`value.length * 2`), which leaves room for current contracts, milestones, wallet rehydration, and preference payloads while preventing runaway blobs from crowding out the origin quota. Oversized writes are reported through `errorReporter` and return `false`.
+
+To tune the cap for a deployment, set:
+
+```bash
+NEXT_PUBLIC_SAFE_STORAGE_MAX_VALUE_BYTES=131072
+```
+
+Invalid, missing, zero, or negative values fall back to the 128 KiB default.
 
 ---
 
@@ -66,7 +75,7 @@ interface AppData {
 All `localStorage` and `window` accesses in `repository.ts` are guarded by:
 
 ```ts
-if (typeof window === 'undefined') return fallback;
+if (typeof window === "undefined") return fallback;
 ```
 
 This prevents crashes during Next.js server-side rendering and static generation, where `window` does not exist.
@@ -75,14 +84,15 @@ This prevents crashes during Next.js server-side rendering and static generation
 
 ## Data Recovery Behaviour
 
-| Condition | Behaviour |
-|-----------|-----------|
-| Key not present in `localStorage` | Returns `[]` for both lists |
-| Key present but value is empty string | Returns `[]` for both lists |
-| Key present but value is invalid JSON | Logs `console.warn('[repository] ...')`, returns `[]` |
-| Key present, valid JSON, but missing `contracts`/`milestones` field | Missing field defaults to `[]`; other field is returned intact |
-| `localStorage.getItem` throws (e.g. storage blocked by browser policy) | Logs `console.warn`, returns `[]`, never throws |
-| `localStorage.setItem` throws (e.g. quota exceeded) | Logs `console.warn`, never throws; in-memory state in the calling component remains correct |
+| Condition                                                              | Behaviour                                                                                            |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Key not present in `localStorage`                                      | Returns `[]` for both lists                                                                          |
+| Key present but value is empty string                                  | Returns `[]` for both lists                                                                          |
+| Key present but value is invalid JSON                                  | Logs `console.warn('[repository] ...')`, returns `[]`                                                |
+| Key present, valid JSON, but missing `contracts`/`milestones` field    | Missing field defaults to `[]`; other field is returned intact                                       |
+| `localStorage.getItem` throws (e.g. storage blocked by browser policy) | Logs `console.warn`, returns `[]`, never throws                                                      |
+| `localStorage.setItem` throws (e.g. quota exceeded)                    | Logs `console.warn`, never throws; in-memory state in the calling component remains correct          |
+| `safeStorage.setItem` receives an oversized value                      | Reports a warning through `errorReporter`, returns `false`, and does not call `localStorage.setItem` |
 
 ---
 
@@ -115,7 +125,7 @@ When the repository returns no milestones, the page falls back to its existing `
 To wipe all persisted data (e.g. for testing or a "reset" feature):
 
 ```ts
-window.localStorage.removeItem('talenttrust_app_data');
+window.localStorage.removeItem("talenttrust_app_data");
 ```
 
 Or to clear everything in the browser:

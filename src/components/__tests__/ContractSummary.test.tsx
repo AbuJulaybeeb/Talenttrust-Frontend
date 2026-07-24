@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import ContractSummary from '../ContractSummary';
+import ContractSummary, { sanitizeAddress } from '../ContractSummary';
 import { PreferencesProvider } from '@/lib/preferences';
 import { testA11y } from '@/test-utils/a11y';
 
@@ -141,6 +141,48 @@ describe('ContractSummary', () => {
     expect(await screen.findByText('1 milestone')).toBeInTheDocument();
   });
 
+  it('displays correct party count for zero parties and renders fallback message', async () => {
+    renderWithPrefs(<ContractSummary {...defaultProps} parties={[]} />);
+
+    expect(screen.getByText('0 parties')).toBeInTheDocument();
+    expect(screen.getByText('No parties listed')).toBeInTheDocument();
+  });
+
+  it('displays correct party count for a single party', async () => {
+    renderWithPrefs(
+      <ContractSummary
+        {...defaultProps}
+        parties={[{ label: 'Client', address: 'GABC1234DEF5678HIJK9012LMNO3456PQRS7890' }]}
+      />
+    );
+
+    expect(screen.getByText('1 party')).toBeInTheDocument();
+    expect(screen.queryByText('No parties listed')).not.toBeInTheDocument();
+  });
+
+  it('displays correct party count for multiple parties', async () => {
+    renderWithPrefs(<ContractSummary {...defaultProps} />);
+    expect(screen.getByText('2 parties')).toBeInTheDocument();
+  });
+
+  it('handles duplicate party labels safely using composite keys', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const duplicateProps = {
+      ...defaultProps,
+      parties: [
+        { label: 'Client', address: 'GABC1234DEF5678HIJK9012LMNO3456PQRS7890' },
+        { label: 'Client', address: 'GXYZ9876STU5432VWXQ1098ABCD7654EFGH3210' },
+      ],
+    };
+    renderWithPrefs(<ContractSummary {...duplicateProps} />);
+
+    expect(screen.getAllByText('Client')).toHaveLength(2);
+    expect(consoleSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Each child in a list should have a unique "key" prop')
+    );
+    consoleSpy.mockRestore();
+  });
+
   it('renders with very long addresses', async () => {
     const longAddress =
       'GABC1234DEF5678HIJK9012LMNO3456PQRS7890WXYZ1234EXTRA';
@@ -191,7 +233,9 @@ describe('ContractSummary', () => {
       const writeText = mockClipboard();
       renderWithPrefs(<ContractSummary {...defaultProps} />);
 
-      const copyBtn = screen.getByRole('button', { name: /copy client address to clipboard/i });
+      const copyBtn = screen.getByRole('button', {
+        name: /copy client address to clipboard/i,
+      });
       expect(copyBtn).toBeInTheDocument();
       expect(copyBtn).toHaveAttribute('title', 'Copy address');
 
@@ -207,26 +251,91 @@ describe('ContractSummary', () => {
       );
     });
 
-    it('shows checkmark icon and reverts after 2 seconds', async () => {
+    it('updates the accessible button name when copied and reverts after 2 seconds', async () => {
       mockClipboard();
       renderWithPrefs(<ContractSummary {...defaultProps} />);
 
-      const copyBtn = screen.getByRole('button', { name: /copy client address to clipboard/i });
-      const copyIconPathBefore = copyBtn.querySelector('path')?.getAttribute('d');
+      const copyBtn = screen.getByRole('button', {
+        name: /copy client address to clipboard/i,
+      });
+      expect(copyBtn).toBeInTheDocument();
 
       await act(async () => {
         fireEvent.click(copyBtn);
       });
 
-      const checkPath = copyBtn.querySelector('path[d="M5 13l4 4L19 7"]');
-      expect(checkPath).toBeInTheDocument();
+      const copiedButton = screen.getByRole('button', {
+        name: /client address copied/i,
+      });
+      expect(copiedButton).toBeInTheDocument();
+      expect(copiedButton).toHaveAttribute('title', 'Client address copied');
 
       await act(async () => {
         jest.advanceTimersByTime(2000);
       });
 
-      const copyIconPathAfter = copyBtn.querySelector('path')?.getAttribute('d');
-      expect(copyIconPathAfter).toEqual(copyIconPathBefore);
+      expect(
+        screen.getByRole('button', {
+          name: /copy client address to clipboard/i,
+        })
+      ).toBeInTheDocument();
+    });
+
+    it('clears the pending timeout when the same address is copied again before revert', async () => {
+      const writeText = mockClipboard();
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+      renderWithPrefs(<ContractSummary {...defaultProps} />);
+
+      const copyBtn = screen.getByRole('button', {
+        name: /copy client address to clipboard/i,
+      });
+
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      expect(writeText).toHaveBeenCalledTimes(2);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', {
+          name: /client address copied/i,
+        })
+      ).toBeInTheDocument();
+
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      expect(
+        screen.getByRole('button', {
+          name: /copy client address to clipboard/i,
+        })
+      ).toBeInTheDocument();
+
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it('clears the pending timeout when the component unmounts', async () => {
+      mockClipboard();
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+      const { unmount } = renderWithPrefs(<ContractSummary {...defaultProps} />);
+
+      const copyBtn = screen.getByRole('button', {
+        name: /copy client address to clipboard/i,
+      });
+
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      unmount();
+
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      clearTimeoutSpy.mockRestore();
     });
 
     it('shows error toast when copying to clipboard fails', async () => {
@@ -262,5 +371,79 @@ describe('ContractSummary', () => {
         })
       );
     });
+
+    it('strips control and bidirectional characters before copying to clipboard', async () => {
+      const writeText = mockClipboard();
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const VALID_KEY = 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H';
+      // Insert control characters and bidi overrides
+      const dirtyAddress = `\u202EGAAQC\x03AIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H`;
+
+      const dirtyProps = {
+        ...defaultProps,
+        parties: [
+          { label: 'Client', address: dirtyAddress }
+        ]
+      };
+      renderWithPrefs(<ContractSummary {...dirtyProps} />);
+
+      const copyBtn = screen.getByRole('button', { name: /copy client address to clipboard/i });
+
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      expect(writeText).toHaveBeenCalledWith(VALID_KEY);
+      expect(mockShowSuccess).toHaveBeenCalled();
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('warns when copying a malformed address', async () => {
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const writeText = mockClipboard();
+
+      const malformedProps = {
+        ...defaultProps,
+        parties: [
+          { label: 'Client', address: 'INVALID_STELLAR_ADDRESS' }
+        ]
+      };
+      renderWithPrefs(<ContractSummary {...malformedProps} />);
+
+      const copyBtn = screen.getByRole('button', { name: /copy client address to clipboard/i });
+
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      expect(writeText).toHaveBeenCalledWith('INVALID_STELLAR_ADDRESS');
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[ContractSummary] Copied address appears malformed: "INVALID_STELLAR_ADDRESS"')
+      );
+      consoleWarnSpy.mockRestore();
+    });
+  });
+});
+
+describe('sanitizeAddress', () => {
+  it('strips ASCII control characters', () => {
+    expect(sanitizeAddress('GAA\x00QCA\x1fIBA\x7fEAQ\x9fCAI')).toBe('GAAQCAIBAEAQCAI');
+  });
+
+  it('strips Unicode bidirectional characters', () => {
+    expect(sanitizeAddress('\u200EGAA\u200FQCA\u202AIBA\u202EEAQ\u2066CAI\u2069')).toBe('GAAQCAIBAEAQCAI');
+  });
+
+  it('leaves clean alphanumeric strings intact', () => {
+    expect(sanitizeAddress('GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H')).toBe(
+      'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H'
+    );
+  });
+
+  it('returns empty string for non-string input', () => {
+    expect(sanitizeAddress(undefined as unknown as string)).toBe('');
+    expect(sanitizeAddress(null as unknown as string)).toBe('');
   });
 });

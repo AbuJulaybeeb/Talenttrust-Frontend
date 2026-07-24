@@ -54,6 +54,6 @@ describe('Error page', () => {
     render(<GlobalError error={testError} reset={mockReset} />);
     
     expect(mockReporter).toHaveBeenCalledTimes(1);
-    expect(mockReporter).toHaveBeenCalledWith(testError, 'Error Boundary');
+    expect(mockReporter).toHaveBeenCalledWith(testError, 'Error Boundary', undefined, undefined);
   });
 });

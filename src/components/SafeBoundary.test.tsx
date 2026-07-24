@@ -99,6 +99,6 @@ describe('SafeBoundary', () => {
     );
 
     expect(mockReporter).toHaveBeenCalledTimes(1);
-    expect(mockReporter).toHaveBeenCalledWith(expect.any(Error), 'SafeBoundary');
+    expect(mockReporter).toHaveBeenCalledWith(expect.any(Error), 'SafeBoundary', undefined, undefined);
   });
 });

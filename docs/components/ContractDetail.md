@@ -17,12 +17,24 @@ Props:
 
 Description: Displays the contract name, current status badge, total value, creation date, and key parties with middle-truncated addresses.
 
+### `ContractProgress`
+
+Props:
+- `milestones: Milestone[]`
+
+Description: Derives escrow metrics directly from the contract's milestone array and renders an accessible progress panel with a `role="progressbar"` indicator and paid/outstanding fund cards. Currency is taken from the milestones themselves — no value is hardcoded on the page. An empty `milestones` array renders a safe zero-state (0 / 0, 0% progress) without throwing.
+
+The component is placed between `ContractSummary` and `MilestonesList` in the left column and wrapped in its own `SafeBoundary`. During data loading a `ContractProgressSkeleton` is shown in its place.
+
+See [`docs/components/ContractProgress.md`](./ContractProgress.md) for the full data-calculation spec and ARIA attribute table.
+
 ### `MilestonesList`
 
 Props:
 - `milestones: Array<{ id: string; title: string; status: 'Pending' | 'Completed' | 'Paid' | 'Disputed'; payout: number; currency: string; dueDate?: string; }>`
+- `contractCurrency?: string` — optional contract-level currency. When provided, milestones whose currency differs (case-insensitive) trigger an accessible `role="alert"` warning banner near the milestones list identifying which and how many milestones mismatch.
 
-Description: Renders a scrollable milestone roster, each showing the title, due date, status, and payout amount.
+Description: Renders a scrollable milestone roster, each showing the title, due date, status, and payout amount. When `contractCurrency` is provided, the component uses `findCurrencyMismatches` from `src/lib/currencyMismatch.ts` to detect and surface currency mismatches.
 
 ### `ActionPanel`
 
@@ -41,6 +53,10 @@ Description: Chooses appropriate action buttons based on the current contract st
 ### `ContractSummarySkeleton`
 
 Description: Renders a placeholder skeleton for `ContractSummary` while contract data is loading. Uses `aria-busy="true"` and `aria-label="Loading contract summary"` for accessibility announcement.
+
+### `ContractProgressSkeleton`
+
+Description: Renders a placeholder skeleton for `ContractProgress` while contract data is loading. Uses `aria-busy="true"` and `aria-label="Loading escrow progress"` for accessibility announcement. Mirrors the visual shape of `ContractProgress` with pulsing grey blocks for the progress bar and both fund cards.
 
 ### `MilestonesListSkeleton`
 
@@ -85,8 +101,13 @@ If the id fails any rule, Next.js `notFound()` is called immediately and the exi
 ## Layout
 
 The contract detail page uses a responsive grid:
-- Desktop: a two-column layout with summary and milestones on the left, and a sticky action panel on the right.
+- Desktop: a two-column layout with summary, escrow progress, and milestones on the left, and a sticky action panel on the right.
 - Mobile: stacked content to keep text readable and controls accessible.
+
+Left column order (top → bottom):
+1. `ContractSummary` — contract name, status, total value, parties
+2. `ContractProgress` — escrow progress bar, paid/outstanding fund cards
+3. `MilestonesList` — scrollable per-milestone detail rows
 
 ## Accessibility
 

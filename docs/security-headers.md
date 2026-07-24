@@ -3,6 +3,54 @@
 This project sets HTTP response headers via the `headers()` function in
 `next.config.js`.  The headers are applied to every route.
 
+## User-supplied record text
+
+Contract names, party labels, and milestone titles are normalised at form
+validation before they are saved to browser storage. `sanitizeUserText` removes
+control characters, trims and collapses whitespace, and applies a length cap.
+The forms validate the cleaned, unbounded value first, so input longer than the
+cap is rejected with a field error rather than being silently truncated.
+
+| Field | Maximum cleaned length |
+|---|---:|
+| Contract name | 200 characters |
+| Party label | 100 characters |
+| Milestone title | 200 characters |
+
+## Login form throttling
+
+The home page login form (`src/app/page.tsx`) uses a client-side attempt
+throttle with exponential backoff as a first line of defence against
+rapid-fire submission scripts.
+
+### How it works
+
+1. Each form submission increments an attempt counter, persisted via
+   `src/lib/safeStorage.ts` so a page reload does not reset it.
+2. After the first submission, subsequent attempts are subject to
+   exponential backoff:
+   - 2nd attempt: 5 s cooldown
+   - 3rd attempt: 25 s cooldown
+   - 4th attempt: 125 s cooldown
+   - 5th+ attempt: capped at 300 s (5 minutes)
+3. During the cooldown the submit button is disabled and shows the
+   remaining seconds. An `aria-live="polite"` region announces the
+   cooldown to screen readers.
+4. A successful form submission resets the counter to zero.
+
+### Configuration
+
+| Constant | Location | Value |
+|---|---|---|
+| `BASE_BACKOFF_MS` | `src/lib/loginThrottle.ts` | 5 000 |
+| `BACKOFF_FACTOR` | `src/lib/loginThrottle.ts` | 5 |
+| `MAX_BACKOFF_MS` | `src/lib/loginThrottle.ts` | 300 000 |
+
+### Test coverage
+
+Run `npx jest -- src/app/__tests__/login-throttle.test.tsx` to execute
+the throttle unit and integration tests.
+
 ## Headers in use
 
 | Header | Value | Why |

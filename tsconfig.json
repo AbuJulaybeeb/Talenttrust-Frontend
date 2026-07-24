@@ -39,11 +39,10 @@
   "exclude": [
     "node_modules",
     "jest.setup.ts",
-    "jest.setup.js",
     "**/*.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    ".next/types/test",
+    ".next/types/test/**/*"
   ],
-  "references": [
-    { "path": "./tsconfig.test.json" }
-  ]
+
 }

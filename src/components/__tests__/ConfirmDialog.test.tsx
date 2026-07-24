@@ -46,6 +46,111 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('assigns role="dialog" by default and role="alertdialog" when tone="destructive"', () => {
+    const { rerender } = render(
+      <ConfirmDialog
+        isOpen={true}
+        title="Default action"
+        description="Are you sure?"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    rerender(
+      <ConfirmDialog
+        isOpen={true}
+        title="Destructive action"
+        description="This cannot be undone!"
+        tone="destructive"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  });
+
+  it('matches aria-labelledby and aria-describedby exactly with generated title and description IDs', () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        title="Accessible Title"
+        description="Accessible Description"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const titleEl = screen.getByText('Accessible Title');
+    const descEl = screen.getByText('Accessible Description');
+
+    const titleId = titleEl.getAttribute('id');
+    const descId = descEl.getAttribute('id');
+
+    expect(titleId).toBeTruthy();
+    expect(descId).toBeTruthy();
+    expect(dialog).toHaveAttribute('aria-labelledby', titleId!);
+    expect(dialog).toHaveAttribute('aria-describedby', descId!);
+  });
+
+  it('has aria-modal="true" attribute present', () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        title="Modal Dialog"
+        description="Should be modal"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('restricts and restores background content with aria-hidden and inert when open/closed', () => {
+    const { rerender, container } = render(
+      <div>
+        <main id="main-content">
+          <h1>Main Content</h1>
+        </main>
+        <ConfirmDialog
+          isOpen={true}
+          title="Restricted Dialog"
+          description="Background should be hidden"
+          onConfirm={jest.fn()}
+          onCancel={jest.fn()}
+        />
+      </div>
+    );
+
+    const mainElement = container.querySelector('#main-content');
+    expect(mainElement).toHaveAttribute('aria-hidden', 'true');
+    expect(mainElement).toHaveAttribute('inert');
+
+    rerender(
+      <div>
+        <main id="main-content">
+          <h1>Main Content</h1>
+        </main>
+        <ConfirmDialog
+          isOpen={false}
+          title="Restricted Dialog"
+          description="Background should be hidden"
+          onConfirm={jest.fn()}
+          onCancel={jest.fn()}
+        />
+      </div>
+    );
+
+    expect(mainElement).not.toHaveAttribute('aria-hidden');
+    expect(mainElement).not.toHaveAttribute('inert');
+  });
+
   it('triggers cancel when Escape is pressed', async () => {
     const user = userEvent.setup();
     const onCancel = jest.fn();

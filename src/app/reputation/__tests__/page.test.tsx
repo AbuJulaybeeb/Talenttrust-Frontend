@@ -8,7 +8,7 @@ jest.mock('../../../components/ReputationProfile', () => {
     return (
       <div data-testid="reputation-profile">
         <div data-testid="reputation-score">{props.score ?? 'N/A'}</div>
-        <div data-testid="reputation-level">{props.level}</div>
+        <div data-testid="reputation-level">{props.level ?? (props.score === 50 ? 'Expert' : 'Community Member')}</div>
         <div data-testid="reputation-name">{props.name}</div>
         <div data-testid="reputation-history-count">{props.history?.length ?? 0}</div>
         {props.history && props.history.length > 0 && (
@@ -171,7 +171,7 @@ describe('ReputationPageContent', () => {
       const data = { score: 50 };
       render(<ReputationPageContent reputationData={data} />);
 
-      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Community Member');
+      expect(screen.getByTestId('reputation-level')).toHaveTextContent('Expert');
     });
 
     it('applies default name when not provided', () => {

@@ -24,7 +24,7 @@ export interface StatusBadgeProps {
  * both themes get an audited, intentional pair.
  * Ratios recorded in docs/components/Accessibility.md.
  */
-const statusColorMap: Record<StatusType, string> = {
+export const statusColorMap: Record<StatusType, string> = {
   Active: 'bg-[var(--status-success-bg)] text-[var(--status-success-foreground)]',
   Completed: 'bg-[var(--status-info-bg)] text-[var(--status-info-foreground)]',
   Disputed: 'bg-[var(--status-error-bg)] text-[var(--status-error-foreground)]',
@@ -33,7 +33,7 @@ const statusColorMap: Record<StatusType, string> = {
 };
 
 /** Non-color icon token paired with each status (aria-hidden; label provides text). */
-const statusIconMap: Record<StatusType, string> = {
+export const statusIconMap: Record<StatusType, string> = {
   Active:    '▶',
   Completed: '✓',
   Disputed:  '⚠',

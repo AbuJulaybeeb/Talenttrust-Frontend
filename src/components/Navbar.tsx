@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -37,7 +38,7 @@ const NAV_ROUTES = [
  *   <WalletConnectButton />
  * </header>
  */
-export default function Navbar(): JSX.Element {
+export default function Navbar(): React.JSX.Element {
   const pathname = usePathname();
 
   return (
