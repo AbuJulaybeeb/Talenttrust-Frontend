@@ -166,7 +166,12 @@ function CustomHeader() {
 
 ## Testing
 
-The test suite in `src/components/__tests__/HeaderActions.test.tsx` provides 100% line and branch coverage:
+Two test files cover this component:
+
+- **`src/components/__tests__/HeaderActions.test.tsx`** — stubs `WalletConnectButton` with a static placeholder to isolate the disclosure mechanics (toggle, ARIA wiring, keyboard, axe).
+- **`src/components/__tests__/HeaderActions.wallet-states.test.tsx`** — renders the *real* `WalletConnectButton` against a mocked `WalletContext` for both the connected (address pill + copy/disconnect buttons) and disconnected (Connect Wallet button) states, so the connected-state markup is proven to actually fit inside the disclosure rather than just asserting a stand-in renders. It also asserts the `sm:hidden` / `sm:block` responsive classes directly, since jsdom has no layout engine and can't measure rendered pixel widths — verifying the "no overflow at 320px" requirement in a real browser (or via a visual-regression/E2E tool) remains a manual/CI-follow-up check.
+
+Together they provide 100% line and branch coverage on `HeaderActions.tsx`:
 
 ### Coverage areas
 1. **Initial render** — verifies the toggle, panel, `ThemeToggle`, and `WalletConnectButton` all mount.
