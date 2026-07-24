@@ -4,9 +4,18 @@ import userEvent from '@testing-library/user-event';
 import ContractsPage from '../page';
 import ContractsLoading from '../loading';
 import * as repository from '@/lib/repository';
-
 import * as stellarAddress from '@/lib/stellarAddress';
+import { PreferencesProvider } from '@/lib/preferences';
+import { ToastProvider } from '@/components/toast/toast-provider';
 
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <PreferencesProvider>
+      <ToastProvider>{ui}</ToastProvider>
+    </PreferencesProvider>
+  );
+}
 
 // Mock dependencies
 jest.mock('@/lib/repository', () => {
@@ -53,7 +62,7 @@ describe('ContractsPage', () => {
 
   describe('Empty State', () => {
     it('renders EmptyState when contracts array is empty', () => {
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.getByText('No contracts found')).toBeInTheDocument();
       expect(screen.getByText('You haven\'t created any contracts yet. Start by creating your first contract to begin freelancing securely.')).toBeInTheDocument();
@@ -62,7 +71,7 @@ describe('ContractsPage', () => {
 
     it('opens form when create contract button is clicked in empty state', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -101,7 +110,7 @@ describe('ContractsPage', () => {
       ];
 
       mockListContracts.mockReturnValue(mockContracts);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.getByText('Website Redesign')).toBeInTheDocument();
       expect(screen.getByText('Mobile App Development')).toBeInTheDocument();
@@ -126,7 +135,7 @@ describe('ContractsPage', () => {
       ];
 
       mockListContracts.mockReturnValue(mockContracts);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.queryByText(/no contracts found/i)).not.toBeInTheDocument();
     });
@@ -135,14 +144,14 @@ describe('ContractsPage', () => {
   describe('Contract Creation Form', () => {
     it('does not show form initially', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('shows form when create button is clicked', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -151,7 +160,7 @@ describe('ContractsPage', () => {
 
     it('closes form when cancel is clicked', async () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -165,7 +174,7 @@ describe('ContractsPage', () => {
 
     it('validates required fields before submission', async () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -182,7 +191,7 @@ describe('ContractsPage', () => {
 
     it('validates Stellar addresses before submission', async () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -218,7 +227,7 @@ describe('ContractsPage', () => {
     it('saves contract and refreshes list on successful submission', async () => {
       // Start with empty list
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -286,7 +295,7 @@ describe('ContractsPage', () => {
 
     it('closes form after successful submission', async () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       // Open form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -336,7 +345,7 @@ describe('ContractsPage', () => {
     it('displays newly created contract in the list', async () => {
       // Start with empty list
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       // Open and submit form
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
@@ -389,7 +398,7 @@ describe('ContractsPage', () => {
   describe('Form Requirements', () => {
     it('requires at least two parties', async () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
@@ -418,14 +427,14 @@ describe('ContractsPage', () => {
   describe('Page Structure', () => {
     it('renders page heading', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.getByRole('heading', { name: 'Contracts', level: 1 })).toBeInTheDocument();
     });
 
     it('renders main landmark', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       expect(screen.getByRole('main')).toBeInTheDocument();
     });
@@ -459,7 +468,7 @@ describe('ContractsPage', () => {
     ];
     mockListContracts.mockReturnValue(existingContracts);
 
-    render(<ContractsPage />);
+    renderWithProviders(<ContractsPage />);
 
     expect(screen.getByText('Existing Contract')).toBeInTheDocument();
     expect(screen.getByText(/Active · Created Apr 20, 2026/)).toBeInTheDocument();
@@ -467,7 +476,7 @@ describe('ContractsPage', () => {
 
   it('calls saveContract and refreshes contracts on form submission', async () => {
     mockListContracts.mockReturnValue([]);
-    render(<ContractsPage />);
+    renderWithProviders(<ContractsPage />);
 
     // Open the form
     fireEvent.click(screen.getByRole('button', { name: 'Create Contract' }));

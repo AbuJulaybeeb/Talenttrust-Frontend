@@ -5,6 +5,7 @@ import { FormField } from './FormField';
 import { ErrorSummary } from './ErrorSummary';
 import { isValidStellarAddress } from '@/lib/stellarAddress';
 import { sanitizeUserText } from '@/lib/sanitizeUserText';
+import { useFormSubmit } from '@/hooks/useFormSubmit';
 import type { Contract } from '@/types/domain';
 
 export const MAX_CONTRACT_NAME_LENGTH = 200;
@@ -144,7 +145,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
   /**
    * Handles form submission, validates input, and calls onSubmit if valid.
    */
-  const handleSubmit = useCallback(
+  const handleRawSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
@@ -177,10 +178,12 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
         milestoneCount: 0,
       };
 
-      onSubmit(contract);
+      return onSubmit(contract);
     },
     [contractName, totalValue, currency, parties, validateForm, onSubmit]
   );
+
+  const handleSubmit = useFormSubmit(handleRawSubmit, 'ContractCreationForm');
 
   /**
    * Updates a specific party's field value.

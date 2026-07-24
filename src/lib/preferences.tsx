@@ -225,13 +225,20 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // `sanitizePreferences` so tampered, corrupted, or prototype-polluting
   // payloads cannot reach React state.
   useEffect(() => {
-    const saved = getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed: unknown = JSON.parse(saved);
-        setPreferences(sanitizePreferences(parsed));
-      } catch (_e) {
-        console.error('Failed to parse preferences', _e);
+    try {
+      const saved = getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed: unknown = JSON.parse(saved);
+          setPreferences(sanitizePreferences(parsed));
+        } catch (_e) {
+          console.error('Failed to parse preferences', _e);
+        }
+      }
+    } catch (error) {
+      // Safe fallback: ignore storage errors, retain defaults
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[PreferencesProvider] safeStorage getItem error', error);
       }
     }
     setIsHydrated(true);

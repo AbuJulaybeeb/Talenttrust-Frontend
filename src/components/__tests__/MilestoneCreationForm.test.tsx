@@ -1,8 +1,28 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { ToastProvider } from '@/components/toast/toast-provider';
 import { MilestoneCreationForm } from '../milestones/MilestoneCreationForm';
 import type { Milestone } from '@/types/domain';
+
+// Define toast mocks for tests
+const mockShowSuccess = jest.fn();
+const mockShowError = jest.fn();
+
+jest.mock('@/components/toast/toast-provider', () => {
+  const actual = jest.requireActual('@/components/toast/toast-provider');
+  return {
+    ...actual,
+    useToast: jest.fn(() => ({
+      showSuccess: mockShowSuccess,
+      showError: mockShowError,
+    })),
+  };
+});
+
+jest.mock('@/lib/errorReporter', () => ({
+  reportError: jest.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,7 +35,9 @@ function renderForm(
   const onSubmit = jest.fn();
   const onCancel = jest.fn();
   const utils = render(
-    <MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} {...overrides} />,
+    <ToastProvider>
+      <MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} {...overrides} />
+    </ToastProvider>,
   );
   return { onSubmit, onCancel, ...utils };
 }
@@ -272,8 +294,10 @@ describe('MilestoneCreationForm', () => {
     });
 
     it('produces unique ids for two submissions with the same title', async () => {
-      // Advance fake timers to ensure Date.now() returns distinct values
-      jest.useFakeTimers();
+      // Mock Date.now() to ensure it returns distinct values for each submission
+      const dateSpy = jest.spyOn(Date, 'now')
+        .mockReturnValueOnce(1000)
+        .mockReturnValueOnce(2000);
 
       const onSubmit1 = jest.fn();
       const onSubmit2 = jest.fn();
@@ -287,9 +311,6 @@ describe('MilestoneCreationForm', () => {
       fireEvent.click(screen.getByRole('button', { name: /add milestone/i }));
       await waitFor(() => expect(onSubmit1).toHaveBeenCalledTimes(1));
       unmount1();
-
-      // Advance time so Date.now() returns a different value
-      jest.advanceTimersByTime(5);
 
       // Second render + submit
       render(
@@ -305,7 +326,7 @@ describe('MilestoneCreationForm', () => {
 
       expect(id1).not.toBe(id2);
 
-      jest.useRealTimers();
+      dateSpy.mockRestore();
     });
 
     it('id slug strips leading and trailing hyphens', async () => {
@@ -434,6 +455,29 @@ describe('MilestoneCreationForm', () => {
       fireEvent.click(screen.getByRole('button', { name: /add milestone/i }));
 
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Unexpected Error Handling
+  // -------------------------------------------------------------------------
+  describe('Unexpected Error Handling', () => {
+    it('catches asynchronous unexpected errors during submission and displays a global error toast', async () => {
+      const errorMockOnSubmit = jest.fn().mockRejectedValue(new Error('Network error'));
+      renderForm({ onSubmit: errorMockOnSubmit });
+
+      const submitBtn = fillValidForm('Network Test', '1000');
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(errorMockOnSubmit).toHaveBeenCalledTimes(1);
+        expect(mockShowError).toHaveBeenCalledWith({
+          title: 'An unexpected error occurred',
+          description: 'Network error',
+        });
+      });
+
+      expect(screen.queryByRole('alert', { name: /there is a problem/i })).not.toBeInTheDocument();
     });
   });
 

@@ -1,4 +1,6 @@
 import React from 'react';
+import { PreferencesProvider } from '@/contexts/preferences-context';
+import { ToastProvider } from '@/components/toast/toast-provider';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import {
@@ -7,13 +9,18 @@ import {
 } from './MilestoneCreationForm';
 
 describe('MilestoneCreationForm', () => {
+  const renderWithProviders = (ui) => render(
+    <PreferencesProvider>
+      <ToastProvider>{ui}</ToastProvider>
+    </PreferencesProvider>
+  );
   const onSubmit = jest.fn();
   const onCancel = jest.fn();
 
   beforeEach(() => jest.clearAllMocks());
 
   it('normalizes a title before submitting the milestone', async () => {
-    render(<MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} />);
+    renderWithProviders(<MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} />);
 
     fireEvent.change(screen.getByLabelText(/^title/i), {
       target: { value: '  Design\u0000\n  review  ' },
@@ -26,7 +33,7 @@ describe('MilestoneCreationForm', () => {
   });
 
   it('rejects an over-length title instead of truncating it', async () => {
-    render(<MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} />);
+    renderWithProviders(<MilestoneCreationForm onSubmit={onSubmit} onCancel={onCancel} />);
 
     fireEvent.change(screen.getByLabelText(/^title/i), {
       target: { value: 'a'.repeat(MAX_MILESTONE_TITLE_LENGTH + 1) },

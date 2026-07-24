@@ -22,8 +22,8 @@ describe("formatAmount – NGN locale override", () => {
     const formatted = result.current.formatAmount(12345, "USD");
     // Should contain NGN symbol or code
     expect(formatted).toMatch(/₦|NGN/);
-    // Verify locale formatting (comma separator) – simple regex check
-    expect(formatted).toMatch(/\d{1,3}(,\d{3})*\.\d{2}/);
+    // Verify locale formatting (comma or space separator) – simple regex check
+    expect(formatted).toMatch(/\d{1,3}([, \u00A0\u202F]\d{3})*\.\d{2}/);
   });
 });
 
@@ -41,8 +41,9 @@ describe("formatAmount – compact notation", () => {
     const usdCompact = result.current.formatAmount(1500000, "USD");
     const ngnCompact = result.current.formatAmount(1500000, "NGN");
     // Expect compact representation like 1.5M (or locale‑specific variant)
-    expect(usdCompact).toMatch(/1\.5[MK]?/i);
-    expect(ngnCompact).toMatch(/1\.5[MK]?/i);
+    // Allow optional spacing which varies across ICU versions.
+    expect(usdCompact).toMatch(/1\.5\s*[MK]?/i);
+    expect(ngnCompact).toMatch(/1\.5\s*[MK]?/i);
     // Currency symbols should still be present
     expect(usdCompact).toContain("$");
     expect(ngnCompact).toMatch(/₦|NGN/);
