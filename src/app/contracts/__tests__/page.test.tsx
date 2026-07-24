@@ -1,6 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ContractsPage from '../page';
+import ContractsLoading from '../loading';
 import * as repository from '@/lib/repository';
 
 import * as stellarAddress from '@/lib/stellarAddress';
@@ -36,6 +38,17 @@ describe('ContractsPage', () => {
     localStorage.clear();
     mockListContracts.mockReturnValue([]);
     mockIsValidStellarAddress.mockImplementation((addr: string | null | undefined) => addr === VALID_ADDRESS);
+  });
+
+  describe('Loading State', () => {
+    it('renders a loading skeleton with accessible status, busy main landmark and list label', () => {
+      render(<ContractsLoading />);
+
+      expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByRole('status')).toHaveTextContent(/loading contracts/i);
+      expect(screen.getByLabelText('Loading contract list')).toBeInTheDocument();
+      expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    });
   });
 
   describe('Empty State', () => {
@@ -415,6 +428,20 @@ describe('ContractsPage', () => {
       render(<ContractsPage />);
 
       expect(screen.getByRole('main')).toBeInTheDocument();
+    });
+
+    it('opens contract creation form with keyboard Enter on the action button', async () => {
+      const user = userEvent.setup();
+      mockListContracts.mockReturnValue([]);
+      render(<ContractsPage />);
+
+      const createButton = screen.getByRole('button', { name: /create contract/i });
+      createButton.focus();
+      await user.keyboard('{Enter}');
+
+      expect(screen.getByRole('dialog', { name: /create new contract/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'create-contract-title');
+      expect(screen.getByRole('heading', { name: /create new contract/i })).toHaveAttribute('id', 'create-contract-title');
     });
   });
 
