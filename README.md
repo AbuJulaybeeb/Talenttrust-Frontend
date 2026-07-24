@@ -218,15 +218,10 @@ The homepage contains an accessible, fully validated sign-in form:
 
 1. Fork the repo and create a branch from `main`.
 2. Install deps, run tests and build: `npm install && npm test && npm run build`.
-3. Open a pull request. CI runs lint, build, and tests on push/PR to `main`.
+3. Use the contribution templates in [`.github/ISSUE_TEMPLATE/bug_report.md`](.github/ISSUE_TEMPLATE/bug_report.md), [`.github/ISSUE_TEMPLATE/feature_request.md`](.github/ISSUE_TEMPLATE/feature_request.md), and [`.github/pull_request_template.md`](.github/pull_request_template.md) so reports include the impacted route/component, reproduction steps, expected behavior, lint/test/build status, coverage, a11y, and security notes.
+4. If you need help or review context, join the community [Discord](https://discord.gg/WqnGpcPx).
 
-When filing issues or opening PRs, please use the provided GitHub templates — they make reviews faster and keep the project history clean:
-
-- **Bug reports** — `.github/ISSUE_TEMPLATE/bug_report.md`: includes reproduction steps, environment details, and an impacted-route field.
-- **Feature requests** — `.github/ISSUE_TEMPLATE/feature_request.md`: covers problem statement, proposed solution, and alternatives.
-- **Pull requests** — `.github/pull_request_template.md`: includes a pre-flight checklist (`lint` / `test` / `build`), a 95% coverage confirmation, and accessibility & security notes.
-
-If you need quick help before filing an issue, the community [Discord](https://discord.gg/WqnGpcPx) is the fastest way to reach the team.
+CI runs lint, build, and tests on every push and pull request to `main`.
 
 ## Features
 

@@ -28,6 +28,10 @@ assignees: ''
 
 <!-- What actually happens? Include any error messages or console output. -->
 
+## Test Output / Notes
+
+<!-- Paste failing test output, console logs, or other proof if you have it. -->
+
 ## Screenshots / Screen Recording
 
 <!-- Drag-and-drop images or a short recording here if it helps illustrate the issue. -->
@@ -47,4 +51,4 @@ assignees: ''
 
 ---
 
-> **Need quick help?** Drop by the community [Discord](https://discord.gg/WqnGpcPx) for faster troubleshooting before or while filing this issue.
+> Need quick help? Drop by the community [Discord](https://discord.gg/WqnGpcPx) for faster troubleshooting.

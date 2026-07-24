@@ -30,8 +30,8 @@ All items must be checked before requesting review.
 
 - [ ] Module test coverage for impacted files meets or exceeds the **95% minimum threshold**
   (run `npm test -- --coverage` and check the per-file table)
-- [ ] If this PR adds or modifies UI components, accessibility tests were written using
-  the shared utilities in `src/test-utils/a11y.tsx`
+- [ ] If this PR adds or modifies UI components, accessibility tests were written with
+  the shared utilities in [`src/test-utils/a11y.tsx`](../src/test-utils/a11y.tsx)
 
 ### What was tested?
 
@@ -51,3 +51,7 @@ All items must be checked before requesting review.
 
 <!-- Does this PR touch authentication, authorization, wallet logic, API calls, or
      user-supplied input? Describe any security considerations or "N/A" if not applicable. -->
+
+---
+
+Need a quick review or clarification? Join the community [Discord](https://discord.gg/WqnGpcPx).
