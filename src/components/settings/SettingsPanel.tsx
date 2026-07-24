@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
-import { usePreferences, Theme, AmountFormat, ToastDensity } from '@/lib/preferences';
-import { DensityToggle } from './DensityToggle';
+import { usePreferences, Theme, AmountFormat, ToastDensity, UserPreferences } from '@/lib/preferences';
 
 const FOCUSABLE_SELECTORS =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -13,18 +12,33 @@ interface SettingsPanelProps {
 }
 
 /**
- * SettingsPanel — A settings drawer with empty, error, and loading state support.
- * 
- * Features:
- * - Uses useFetchState hook to manage preferences loading states
- * - Distinct empty state when no preferences are available
- * - Error state with keyboard-accessible retry button
- * - Proper focus management and ARIA announcements
- * - Keyboard navigation with focus trapping
- * - Accessibility: WCAG 2.1 AA compliant dialog with proper semantics
+ * Compares two preference objects and returns a human-readable array of
+ * change descriptions, e.g. ["Theme changed to dark"].
  */
+function describePreferenceChanges(
+  prev: UserPreferences,
+  curr: UserPreferences,
+): string[] {
+  const changes: string[] = [];
+  if (prev.theme !== curr.theme) {
+    changes.push(`Theme changed to ${curr.theme}`);
+  }
+  if (prev.amountFormat !== curr.amountFormat) {
+    changes.push(`Currency format changed to ${curr.amountFormat}`);
+  }
+  if (prev.toastDensity !== curr.toastDensity) {
+    changes.push(`Toast density changed to ${curr.toastDensity}`);
+  }
+  if (prev.quietMode !== curr.quietMode) {
+    changes.push(`Quiet mode ${curr.quietMode ? 'enabled' : 'disabled'}`);
+  }
+  return changes;
+}
+
+const ANNOUNCE_DEBOUNCE_MS = 400;
+
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const { preferences, updatePreference } = usePreferences();
+  const { preferences, isHydrated, updatePreference } = usePreferences();
   const panelRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -53,6 +67,56 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       setHasInitialized(true);
     }
   }, [isOpen, hasInitialized, retry]);
+
+  // ---- aria-live announcement state ----
+  const [announcement, setAnnouncement] = useState('');
+  const baselinePrefsRef = useRef<UserPreferences>({ ...preferences });
+  const hasSyncedHydrationRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    // 1. While still hydrating from localStorage, keep the baseline in
+    //    sync and do not announce anything.
+    if (!isHydrated) {
+      baselinePrefsRef.current = { ...preferences };
+      return;
+    }
+
+    // 2. Hydration just finished — this is the restored state.  Sync the
+    //    baseline one last time and skip the announcement so the user
+    //    never hears a "change" caused by loading saved preferences.
+    if (!hasSyncedHydrationRef.current) {
+      hasSyncedHydrationRef.current = true;
+      baselinePrefsRef.current = { ...preferences };
+      return;
+    }
+
+    // 3. Any further changes are genuine user interactions.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      const changes = describePreferenceChanges(
+        baselinePrefsRef.current,
+        preferences,
+      );
+      if (changes.length > 0) {
+        const message = `Settings updated: ${changes.join('. ')}.`;
+        // Toggle the announcement so repeated identical messages
+        // are still picked up by screen readers.
+        setAnnouncement((prev) => (prev === message ? `${message} ` : message));
+      }
+      baselinePrefsRef.current = { ...preferences };
+    }, ANNOUNCE_DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [preferences, isHydrated]);
+  // -------------------------------------
 
   /**
    * Focus management effect for modal dialog accessibility.
@@ -113,6 +177,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         aria-labelledby="settings-panel-title"
         className="relative w-full max-w-md bg-[var(--background)] shadow-xl flex flex-col h-full border-l border-[var(--border)]"
       >
+        {/* Polite live region announcing preference changes to assistive tech */}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {announcement}
+        </div>
+
         <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
           <h2 id="settings-panel-title" className="text-xl font-bold text-[var(--foreground)]">Settings</h2>
           <button 

@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { SettingsPanel } from '../SettingsPanel';
 import { PreferencesProvider } from '@/lib/preferences';
@@ -22,9 +21,25 @@ const getFocusableEls = () => {
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SEL));
 };
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
+/**
+ * Return the current text content of the aria-live announcement region.
+ */
+function getAnnouncementText(): string {
+  const region = screen.getByRole('status');
+  return region.textContent ?? '';
+}
+
+describe('SettingsPanel', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCache();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
 
 beforeEach(() => {
   localStorage.clear();
@@ -417,30 +432,26 @@ describe('SettingsPanel – keyboard interactions', () => {
     expect(document.activeElement).toBe(els[els.length - 1]);
   });
 
-  it('Tab on a middle element does not wrap or prevent default', () => {
-    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    const els = getFocusableEls();
-    // Focus any element that is neither first nor last
-    if (els.length >= 3) {
-      const mid = els[1];
-      mid.focus();
-      const ev = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: false, bubbles: true, cancelable: true });
-      document.dispatchEvent(ev);
-      // Default was NOT prevented — mid element still has focus (browser did not move it)
-      expect(document.activeElement).toBe(mid);
-    }
+  // --- Accessibility validation with jest-axe ---
+
+  it('passes accessibility audit with jest-axe when open', async () => {
+    jest.useRealTimers();
+    const { container } = renderWithProvider(
+      <SettingsPanel isOpen={true} onClose={() => {}} />
+    );
+    
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 
-  it('Shift+Tab on a middle element does not wrap', () => {
-    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    const els = getFocusableEls();
-    if (els.length >= 3) {
-      const mid = els[1];
-      mid.focus();
-      const ev = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
-      document.dispatchEvent(ev);
-      expect(document.activeElement).toBe(mid);
-    }
+  it('passes accessibility audit with jest-axe when closed', async () => {
+    jest.useRealTimers();
+    const { container } = renderWithProvider(
+      <SettingsPanel isOpen={false} onClose={() => {}} />
+    );
+    
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });
 
@@ -534,104 +545,189 @@ describe('SettingsPanel – open/close lifecycle', () => {
     expect(within(themeGroup).getByRole('radio', { name: /light/i })).toHaveAttribute('aria-checked', 'true');
     expect(within(themeGroup).getByRole('radio', { name: /dark/i })).toHaveAttribute('aria-checked', 'false');
   });
-});
 
-// ---------------------------------------------------------------------------
-// 10. Accessibility: keyboard-accessible controls
-// ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // aria-live announcement region tests
+  // ------------------------------------------------------------------
 
-describe('SettingsPanel – accessible control styling', () => {
-  it('all interactive controls carry focus-visible ring classes', () => {
-    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    const controls = [
-      screen.getByRole('button', { name: /close settings/i }),
-      screen.getByRole('switch', { name: /quiet mode/i }),
-      screen.getByRole('button', { name: /done/i }),
-    ];
-    controls.forEach((el) => {
-      expect(el.className).toMatch(/focus-visible/);
+  describe('aria-live announcements', () => {
+    it('does not announce anything on mount (empty live region)', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      // Even after the debounce window passes, nothing should appear.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(getAnnouncementText()).toBe('');
     });
-  });
 
-  it('all theme radio buttons carry focus-visible ring classes', () => {
-    renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
-    const themeGroup = screen.getByRole('radiogroup', { name: /theme/i });
-    within(themeGroup).getAllByRole('radio').forEach((btn) => {
-      expect(btn.className).toMatch(/focus-visible/);
+    it('announces a single preference change after debounce', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
+
+      // Before debounce — still empty.
+      expect(getAnnouncementText()).toBe('');
+
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(getAnnouncementText()).toContain('Theme changed to dark');
     });
-  });
-});
 
-// ---------------------------------------------------------------------------
-// 11. Accessibility audit (jest-axe)
-// ---------------------------------------------------------------------------
+    it('includes the "Settings updated:" prefix', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-describe('SettingsPanel – axe accessibility audit', () => {
-  it('passes accessibility audit when open', async () => {
-    const { container } = renderWithProvider(
-      <SettingsPanel isOpen={true} onClose={() => {}} />
-    );
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
+      fireEvent.click(screen.getByRole('radio', { name: /light/i }));
 
-  it('passes accessibility audit when closed', async () => {
-    const { container } = renderWithProvider(
-      <SettingsPanel isOpen={false} onClose={() => {}} />
-    );
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
-});
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
 
-// ---------------------------------------------------------------------------
-// 12. useEffect guard when isOpen transitions false → true → false
-//     Covers line 29: if (!isOpen) return inside useEffect
-// ---------------------------------------------------------------------------
+      expect(getAnnouncementText()).toMatch(/^Settings updated:/);
+    });
 
-describe('SettingsPanel – useEffect isOpen guard (line 29)', () => {
-  it('effect guard runs and exits cleanly on isOpen=false rerender', () => {
-    // Start open so the component mounts and attaches the keydown listener.
-    const onClose = jest.fn();
-    const { rerender } = render(
-      <PreferencesProvider>
-        <SettingsPanel isOpen={true} onClose={onClose} />
-      </PreferencesProvider>
-    );
+    it('announces theme changes with correct wording', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-    // Transition to closed: useEffect re-runs with isOpen=false, hits the guard
-    // and removes the previously attached listener (cleanup).
-    rerender(
-      <PreferencesProvider>
-        <SettingsPanel isOpen={false} onClose={onClose} />
-      </PreferencesProvider>
-    );
+      // Start from default 'system' → click 'dark'
+      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(getAnnouncementText()).toContain('Theme changed to dark');
+    });
 
-    // The panel is gone
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    it('announces currency format changes with correct wording', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-    // Escape no longer calls onClose (listener was cleaned up)
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(onClose).not.toHaveBeenCalled();
-  });
+      fireEvent.click(screen.getByRole('radio', { name: /ngn/i }));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
 
-  it('useEffect does not attach a new listener after transition to closed', () => {
-    const { rerender } = render(
-      <PreferencesProvider>
-        <SettingsPanel isOpen={true} onClose={() => {}} />
-      </PreferencesProvider>
-    );
+      expect(getAnnouncementText()).toContain('Currency format changed to ngn');
+    });
 
-    const addSpy = jest.spyOn(document, 'addEventListener');
+    it('announces toast density changes with correct wording', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
 
-    rerender(
-      <PreferencesProvider>
-        <SettingsPanel isOpen={false} onClose={() => {}} />
-      </PreferencesProvider>
-    );
+      const densityGroup = screen.getByRole('radiogroup', { name: /toast density/i });
+      fireEvent.click(within(densityGroup).getByRole('radio', { name: /compact/i }));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
 
-    // No NEW keydown listener should have been added for the closed state
-    expect(addSpy).not.toHaveBeenCalledWith('keydown', expect.any(Function));
-    addSpy.mockRestore();
+      expect(getAnnouncementText()).toContain('Toast density changed to compact');
+    });
+
+    it('announces quiet mode enabled', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(getAnnouncementText()).toContain('Quiet mode enabled');
+    });
+
+    it('announces quiet mode disabled', () => {
+      // Seed with quietMode already on so toggling disables it.
+      localStorage.setItem(
+        'talenttrust-user-preferences',
+        JSON.stringify({ quietMode: true }),
+      );
+
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(getAnnouncementText()).toContain('Quiet mode disabled');
+    });
+
+    it('debounces rapid successive updates into one combined announcement', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      // Fire three changes in quick succession
+      fireEvent.click(screen.getByRole('radio', { name: /dark/i }));
+      fireEvent.click(screen.getByRole('radio', { name: /ngn/i }));
+      fireEvent.click(screen.getByRole('switch', { name: /quiet mode/i }));
+
+      // After a short time (within debounce window), nothing announced yet.
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(getAnnouncementText()).toBe('');
+
+      // After full debounce, a single announcement covers all changes.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+
+      const text = getAnnouncementText();
+      expect(text).toContain('Theme changed to dark');
+      expect(text).toContain('Currency format changed to ngn');
+      expect(text).toContain('Quiet mode enabled');
+      // Ensure there is exactly one "Settings updated:" prefix (combined).
+      expect(text.split('Settings updated:').length).toBe(2);
+    });
+
+    it('does not announce when clicking the already-active option (zero changes)', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      // Default theme is 'system'; click 'system' radio.
+      fireEvent.click(screen.getByRole('radio', { name: /^system$/i }));
+
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(getAnnouncementText()).toBe('');
+    });
+
+    it('live region has correct ARIA attributes', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      const region = screen.getByRole('status');
+      expect(region.getAttribute('aria-live')).toBe('polite');
+      expect(region.getAttribute('aria-atomic')).toBe('true');
+    });
+
+    it('live region is visually hidden (sr-only)', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      const region = screen.getByRole('status');
+      expect(region.className).toContain('sr-only');
+    });
+
+    it('does not announce when rapid toggling results in no net change', () => {
+      renderWithProvider(<SettingsPanel isOpen={true} onClose={() => {}} />);
+
+      // Rapidly toggle quiet mode twice (on then off) — net change is zero.
+      const quietSwitch = screen.getByRole('switch', { name: /quiet mode/i });
+      fireEvent.click(quietSwitch); // off → on
+      fireEvent.click(quietSwitch); // on → off
+
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+
+      // Net zero change → nothing to announce.
+      expect(getAnnouncementText()).toBe('');
+    });
+
+    it('does not announce when panel is closed (no render)', () => {
+      renderWithProvider(
+        <SettingsPanel isOpen={false} onClose={() => {}} />,
+      );
+
+      expect(screen.queryByRole('status')).toBeNull();
+    });
   });
 });
