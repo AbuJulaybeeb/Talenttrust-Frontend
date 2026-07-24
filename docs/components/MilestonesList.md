@@ -2,7 +2,48 @@
 
 ## Overview
 
-The `MilestonesList` component displays the list of milestones associated with a contract. It renders each milestone's status, payout amount, and due date.
+The `MilestonesList` component displays the list of milestones associated with a contract. It renders each milestone's status, payout amount, and due date. The component includes an accessible search and sort toolbar to help users find and organize milestones efficiently.
+
+## Search and Sort Toolbar
+
+The component provides a toolbar above the milestones list with search and sort functionality:
+
+### Search Input
+
+- **Label**: "Search milestones" (visually hidden, accessible via screen reader)
+- **Placeholder**: "Search milestones..."
+- **Behavior**: Filters milestones by title using case-insensitive matching
+- **Partial Matches**: Supports partial string matching (e.g., "phase" matches "Design Phase", "Development Phase")
+- **Empty Query**: Shows all milestones when the search query is empty or whitespace-only
+- **No Matches**: Displays a friendly "No milestones match your search" message with a "Clear search" button
+
+### Sort Select
+
+- **Label**: "Sort by:"
+- **Options**:
+  - Due date (earliest first) - `dueDate-asc`
+  - Due date (latest first) - `dueDate-desc`
+  - Payout (lowest first) - `payout-asc`
+  - Payout (highest first) - `payout-desc`
+- **Due Date Handling**: Milestones without due dates are placed at the end when sorting by due date
+- **Tie Handling**: When milestones have identical values, their relative order is preserved
+
+### Accessibility Features
+
+- **Live Region**: An `aria-live="polite"` region announces the filtered result count to assistive technology
+- **Count Announcement**: Shows "Showing X of Y milestones" when filtering is active
+- **Labelled Controls**: Both search input and sort select have proper labels
+- **Keyboard Navigation**: All controls are fully keyboard accessible
+- **Focus Management**: Clear search button restores focus appropriately
+
+### Helper Functions
+
+The component exports two helper functions for testing and reuse:
+
+- `filterMilestonesByTitle(milestones, query)`: Filters milestones by title (case-insensitive)
+- `sortMilestones(milestones, sortOption)`: Sorts milestones by due date or payout
+
+Both functions are pure and do not mutate the original array.
 
 ## Due-Soon Reminder Banner
 
