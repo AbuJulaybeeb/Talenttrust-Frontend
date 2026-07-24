@@ -5,6 +5,9 @@ import { ToastDemo } from '@/components/toast/toast-demo';
 import { FormField } from '@/components/FormField';
 import { ErrorSummary } from '@/components/ErrorSummary';
 import { useToast } from '@/components/toast/toast-provider';
+import { DashboardWorkSummary } from '@/components/DashboardWorkSummary';
+import { listContracts, listMilestones } from '@/lib/repository';
+import type { Contract, Milestone } from '@/types/domain';
 import {
   MAX_EMAIL_LENGTH,
   MAX_PASSWORD_LENGTH,
@@ -23,6 +26,10 @@ export default function Home() {
   const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
   const cooldownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { showSuccess } = useToast();
+  const [workData, setWorkData] = useState<{ contracts: Contract[]; milestones: Milestone[] }>({
+    contracts: [],
+    milestones: [],
+  });
 
   const clearCooldownInterval = () => {
     if (cooldownIntervalRef.current !== null) {
@@ -52,6 +59,11 @@ export default function Home() {
       startCooldownCountdown();
     }
     return clearCooldownInterval;
+  }, []);
+
+  // The dashboard reuses the persisted client data; it does not make a network request.
+  useEffect(() => {
+    setWorkData({ contracts: listContracts(), milestones: listMilestones() });
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,6 +186,11 @@ export default function Home() {
             </div>
           )}
         </form>
+
+        <DashboardWorkSummary
+          contracts={workData.contracts}
+          milestones={workData.milestones}
+        />
 
         <ToastDemo />
       </div>
