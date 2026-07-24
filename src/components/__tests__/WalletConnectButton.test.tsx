@@ -355,6 +355,154 @@ describe('WalletConnectButton', () => {
     }).not.toThrow();
   });
 
+  // ── Keyboard interaction ──────────────────────────────────────────────
+
+  it('activates connect via keyboard (Enter key)', async () => {
+    const connect = jest.fn();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    mockUseWallet.mockReturnValue(createWalletState({ connect }));
+
+    render(<WalletConnectButton />);
+
+    const connectButton = screen.getByRole('button', { name: 'Connect wallet' });
+    connectButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('activates retry via keyboard (Enter key)', async () => {
+    const connect = jest.fn();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    mockUseWallet.mockReturnValue(createWalletState({ error: 'Connection failed', connect }));
+
+    render(<WalletConnectButton />);
+
+    const retryButton = screen.getByRole('button', { name: 'Retry wallet connection' });
+    retryButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('activates disconnect via keyboard (Enter key)', async () => {
+    const disconnect = jest.fn();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    mockUseWallet.mockReturnValue(createWalletState({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+      disconnect,
+    }));
+    installClipboardMock();
+
+    render(<WalletConnectButton />);
+
+    const disconnectButton = screen.getByRole('button', { name: 'Disconnect wallet' });
+    disconnectButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Loading exclusivity ──────────────────────────────────────────────
+
+  it('shows error state when both error and isConnecting are true (error wins)', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ error: 'Connection failed', isConnecting: true }));
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Connection Error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry wallet connection' })).toBeInTheDocument();
+    expect(screen.queryByText('Connecting...')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect wallet' })).not.toBeInTheDocument();
+  });
+
+  it('shows connected state when both address and isConnecting are true (address wins)', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ address: '0xABCDEF1234567890', isConnecting: true }));
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByRole('button', { name: 'Copy address to clipboard' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect wallet' })).toBeInTheDocument();
+    expect(screen.queryByText('Connecting...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connection Error')).not.toBeInTheDocument();
+  });
+
+  it('shows error state when both error and address are set (error wins)', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ error: 'Connection failed', address: '0xABCDEF1234567890' }));
+
+    render(<WalletConnectButton />);
+
+    expect(screen.getByText('Connection Error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry wallet connection' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy address to clipboard' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect wallet' })).not.toBeInTheDocument();
+  });
+
+  // ── Accessible semantics ─────────────────────────────────────────────
+
+  it('renders warning icon in error state', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ error: 'Something went wrong' }));
+
+    render(<WalletConnectButton />);
+
+    const errorSvg = screen.getByText('Connection Error').closest('div')?.querySelector('svg');
+    expect(errorSvg).toBeInTheDocument();
+    const warningPath = errorSvg?.querySelector('path');
+    expect(warningPath).toHaveAttribute('d', expect.stringContaining('M12 9v2m0 4h.01'));
+  });
+
+  it('marks connecting spinner as aria-hidden', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ isConnecting: true }));
+
+    render(<WalletConnectButton />);
+
+    const spinnerSvg = screen.getByRole('button', { name: 'Connect wallet' }).querySelector('svg.animate-spin');
+    expect(spinnerSvg).toBeInTheDocument();
+    expect(spinnerSvg).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('marks connected green dot as aria-hidden', () => {
+    mockUseWallet.mockReturnValue(createWalletState({ address: '0xABCDEF1234567890' }));
+
+    render(<WalletConnectButton />);
+
+    const greenDot = document.querySelector('.bg-green-500');
+    expect(greenDot).toBeInTheDocument();
+    expect(greenDot).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  // ── Accessibility audits ─────────────────────────────────────────────
+
+  it('has no accessibility violations in the disconnected state', async () => {
+    jest.useRealTimers();
+    mockUseWallet.mockReturnValue(createWalletState({}));
+
+    await testA11y(<WalletConnectButton />);
+
+    jest.useFakeTimers();
+  });
+
+  it('has no accessibility violations in the connecting state', async () => {
+    jest.useRealTimers();
+    mockUseWallet.mockReturnValue(createWalletState({ isConnecting: true }));
+
+    await testA11y(<WalletConnectButton />);
+
+    jest.useFakeTimers();
+  });
+
+  it('has no accessibility violations in the error state', async () => {
+    jest.useRealTimers();
+    mockUseWallet.mockReturnValue(createWalletState({ error: 'Connection failed' }));
+
+    await testA11y(<WalletConnectButton />);
+
+    jest.useFakeTimers();
+  });
+
   it('has no accessibility violations in the connected state', async () => {
     jest.useRealTimers();
     mockUseWallet.mockReturnValue(createWalletState({

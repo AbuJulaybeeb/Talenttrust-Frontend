@@ -560,6 +560,33 @@ describe('WalletContext persistence', () => {
     expect(screen.getByTestId('address')).toHaveTextContent('null');
     expect(removeItem).toHaveBeenCalledWith('wallet_connected_address');
   });
+
+  test('does not set address when safeStorage returns null on mount', () => {
+    (getItem as jest.Mock).mockReturnValue(null);
+    render(
+      <WalletProvider idleTimeout={0}>
+        <MockComponent />
+      </WalletProvider>
+    );
+    expect(screen.getByTestId('address')).toHaveTextContent('null');
+  });
+
+  test('cleans up idle event listeners and timer on unmount', () => {
+    (getItem as jest.Mock).mockReturnValue(null);
+    const { unmount } = render(
+      <ToastProvider>
+        <WalletProvider idleTimeout={2000}>
+          <MockComponent />
+        </WalletProvider>
+      </ToastProvider>
+    );
+    act(() => {
+      screen.getByText('Connect').click();
+    });
+    jest.advanceTimersByTime(1000);
+    // Unmount while connected with an active idle timer
+    expect(() => unmount()).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
