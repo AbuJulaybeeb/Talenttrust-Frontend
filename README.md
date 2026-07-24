@@ -40,6 +40,7 @@ This repository keeps user-facing and implementation notes inside the `docs/` fo
 - `docs/components/Accessibility.md` — Accessibility testing, a11y helpers, and issue #383 notes
 - `docs/components/Contracts.md` — Contracts components: props, states, and usage for `CreateContractForm`, `ContractCreationForm`, `ContractSummary`, `ContractProgress`, `ActionPanel`, loading skeletons, and both contracts pages
 - `docs/components/ReputationPage.md` — Reputation page implementation and rendering states
+- `docs/components/WalletConnectButton.md` — Wallet button props, rendered states, and usage contract
 - `docs/data-model.md` — Data model and persistence guide
 - `docs/persistence.md` — Persistence API and local storage patterns
 - `docs/preferences.md` — Preferences provider and currency/locale helpers
