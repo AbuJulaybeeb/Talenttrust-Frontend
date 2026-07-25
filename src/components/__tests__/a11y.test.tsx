@@ -455,7 +455,7 @@ describe('a11y: prefers-reduced-motion — WalletConnectButton', () => {
     expect(window.matchMedia('(prefers-color-scheme: dark)').matches).toBe(false);
   });
 
-  it('spinner SVG remains in the DOM while connecting (static loading indicator)', () => {
+  it('loading skeleton block carries motion-reduce:animate-none class to halt shimmer animation', () => {
     const { useWallet } = require('@/contexts/WalletContext') as {
       useWallet: jest.Mock;
     };
@@ -469,31 +469,12 @@ describe('a11y: prefers-reduced-motion — WalletConnectButton', () => {
 
     const { container } = renderWalletConnectButton();
 
-    // The SVG with animate-spin must be present so a static circle is shown.
-    const spinner = container.querySelector('svg.animate-spin');
-    expect(spinner).toBeInTheDocument();
+    const shimmerBlock = container.querySelector('div[aria-hidden="true"]');
+    expect(shimmerBlock).toBeInTheDocument();
+    expect(shimmerBlock).toHaveClass('animate-shimmer');
+    expect(shimmerBlock).toHaveClass('motion-reduce:animate-none');
 
-    // The "Connecting..." label must still be present.
-    expect(screen.getByText(/connecting\.\.\./i)).toBeInTheDocument();
-  });
-
-  it('spinner SVG carries animate-spin class (CSS halts rotation; class stays)', () => {
-    const { useWallet } = require('@/contexts/WalletContext') as {
-      useWallet: jest.Mock;
-    };
-    useWallet.mockReturnValue({
-      address: null,
-      isConnecting: true,
-      error: null,
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-    });
-
-    const { container } = renderWalletConnectButton();
-    const spinner = container.querySelector('svg.animate-spin');
-    // Class must not be stripped — the @media rule in CSS stops the spin.
-    expect(spinner).not.toBeNull();
-    expect(spinner!.classList.contains('animate-spin')).toBe(true);
+    expect(screen.getByText(/loading wallet\.\.\./i)).toBeInTheDocument();
   });
 
   it('WalletConnectButton has no axe violations while connecting under reduced motion', async () => {

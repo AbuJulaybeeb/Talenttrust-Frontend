@@ -29,6 +29,12 @@ export type WalletContextType = {
   isConnecting: boolean;
 
   /**
+   * `true` during initial client-side storage rehydration or wallet state
+   * initialization.
+   */
+  isLoading?: boolean;
+
+  /**
    * Human-readable error message from the most recent failed `connect()`
    * attempt, or `null` when no error is present. Cleared automatically at the
    * start of each new `connect()` call.
@@ -123,6 +129,7 @@ export function WalletProvider({
 
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Safely obtain toast functions; fallback to no-ops if provider is absent
   // (e.g. during unit tests that render WalletProvider without ToastProvider).
@@ -172,6 +179,7 @@ export function WalletProvider({
     if (stored) {
       setAddress(stored);
     }
+    setIsLoading(false);
   }, []);
 
   // Idle auto‑disconnect handling
@@ -247,7 +255,7 @@ export function WalletProvider({
   }, []);
 
   return (
-    <WalletContext.Provider value={{ address, isConnecting, error, connect, disconnect }}>
+    <WalletContext.Provider value={{ address, isConnecting, isLoading, error, connect, disconnect }}>
       {children}
     </WalletContext.Provider>
   );
