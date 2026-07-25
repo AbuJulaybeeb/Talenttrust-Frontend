@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
-import SafeBoundary from '../../components/SafeBoundary';
+import SafeBoundary from '@/components/SafeBoundary';
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 

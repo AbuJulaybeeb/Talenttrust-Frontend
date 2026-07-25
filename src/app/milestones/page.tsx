@@ -6,7 +6,7 @@ import EmptyState from '../../components/EmptyState';
 import MilestonesList from '../../components/MilestonesList';
 import MilestoneFilter, { type MilestoneStatusFilter } from '../../components/milestones/MilestoneFilter';
 import { MilestoneCreationForm } from '../../components/milestones/MilestoneCreationForm';
-import SafeBoundary from '../../components/SafeBoundary';
+import SafeBoundary from '@/components/SafeBoundary';
 import { listMilestones, saveMilestone } from '@/lib/repository';
 import { getItem, setItem } from '@/lib/safeStorage';
 import type { Milestone } from '@/types/domain';
