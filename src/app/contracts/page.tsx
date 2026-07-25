@@ -1,46 +1,42 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import EmptyState from '../../components/EmptyState';
 import Card from '../../components/Card';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 
-const ANNOUNCEMENT_DELAY_MS = 250;
-
-export function getContractsAnnouncementMessage(contracts: Contract[], previousContracts: Contract[]) {
-  if (contracts.length === 0) {
-    return 'No contracts found.';
-  }
-
-  const currentCount = contracts.length;
-  const previousCount = previousContracts.length;
-  const countDifference = currentCount - previousCount;
-
-  if (countDifference > 0) {
-    return `${currentCount} contract${currentCount === 1 ? '' : 's'} available`;
-  }
-
-  if (countDifference < 0) {
-    return `${currentCount} contract${currentCount === 1 ? '' : 's'} available`;
-  }
-
-  return `${currentCount} contract${currentCount === 1 ? '' : 's'} available`;
-}
-
 const ContractsPage: React.FC = () => {
   // Initialise from localStorage on first render; subsequent saves trigger
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
-  const previousContractsRef = useRef<Contract[]>(contracts);
-  const announcementTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  /** Client-side filtered contracts derived from the search and status filters. */
+  /** Client-side filtered contracts derived from the active status filter and search term. */
   const filteredContracts = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    let result = contracts;
+    if (statusFilter !== 'All') {
+      result = result.filter((c) => c.status === statusFilter);
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.contractName.toLowerCase().includes(term) ||
+          c.status.toLowerCase().includes(term),
+      );
+    }
+    return result;
+  }, [contracts, statusFilter, searchTerm]);
+
+  const countSummary =
+    statusFilter === 'All'
+      ? `Showing ${filteredContracts.length} of ${contracts.length} contract${contracts.length !== 1 ? 's' : ''}`
+      : `Showing ${filteredContracts.length} of ${contracts.length} ${statusFilter.toLowerCase()} contract${contracts.length !== 1 ? 's' : ''}`;
 
     return contracts.filter((contract) => {
       const matchesSearch =
@@ -143,11 +139,30 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
-          {/* TODO: Replace with a proper ContractSummary list component. */}
-          <ul className="space-y-4">
-            {contracts.map((contract, idx) => (
-              <li key={`${contract.contractName}-${idx}`}>
-                <Card>
+
+          <p
+            className="text-sm text-slate-600 mb-4"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {countSummary}
+          </p>
+
+          <ContractStatusFilter
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            resultCount={filteredContracts.length}
+          />
+
+          {filteredContracts.length === 0 ? (
+            <p className="text-sm text-slate-500">No contracts match the selected filter.</p>
+          ) : (
+            <ul className="space-y-4">
+              {filteredContracts.map((contract, idx) => (
+                <li
+                  key={`${contract.contractName}-${idx}`}
+                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
                   <p className="font-semibold text-slate-900">{contract.contractName}</p>
                   <p className="text-sm text-slate-500">
                     {contract.status} · Created {contract.createdAt}
