@@ -100,7 +100,7 @@ const ContractProgress = ({ milestones }: ContractProgressProps) => {
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Financial summary — rendered for both empty and non-empty states */}
         <div className="grid gap-4 sm:grid-cols-2">
