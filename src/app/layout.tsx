@@ -53,7 +53,7 @@ import RouteAnnouncer from '@/components/RouteAnnouncer';
 import Navbar from '@/components/Navbar';
 import NavigationErrorBoundary from '@/components/NavigationErrorBoundary';
 import HeaderActions from '@/components/HeaderActions';
-import { CommandPalette } from '@/components/CommandPalette';
+import CommandPalette from '@/components/CommandPalette';
 
 export default function RootLayout({
   children,
@@ -75,6 +75,7 @@ export default function RootLayout({
                 Skip to main content
               </a>
               <RouteAnnouncer />
+              <CommandPalette />
               <div className="min-h-screen bg-slate-50 flex flex-col">
                 <header className="sticky top-0 z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur-md">
                   <div className="flex items-center gap-2">
