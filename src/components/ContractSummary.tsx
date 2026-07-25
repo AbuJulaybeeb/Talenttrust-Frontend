@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import StatusBadge, { StatusType } from './StatusBadge';
+import Card from './Card';
 import { truncateAddress } from '@/lib/truncateAddress';
 import { usePreferences } from '@/lib/preferences';
 import { useToast } from '@/components/toast/toast-provider';
@@ -128,21 +129,21 @@ const ContractSummary = ({
   }, []);
 
   return (
-    <section
-      aria-labelledby="contract-summary-title"
-      className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-    >
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-sm text-slate-500 uppercase tracking-[0.24em]">Contract Summary</p>
-          <h1 id="contract-summary-title" className="mt-2 text-2xl font-semibold text-slate-900">
-            {contractName}
-          </h1>
-        </div>
-        <StatusBadge status={status} />
-      </div>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+    <section aria-labelledby="contract-summary-title">
+      <Card
+        header={
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm text-slate-500 uppercase tracking-[0.24em]">Contract Summary</p>
+              <h1 id="contract-summary-title" className="mt-2 text-2xl font-semibold text-slate-900">
+                {contractName}
+              </h1>
+            </div>
+            <StatusBadge status={status} />
+          </div>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl bg-slate-50 p-4">
           <p className="text-sm text-slate-500">Total value</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">{formattedValue}</p>
@@ -199,6 +200,7 @@ const ContractSummary = ({
           </div>
         </div>
       </div>
+      </Card>
     </section>
   );
 };
