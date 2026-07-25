@@ -51,6 +51,7 @@ import { SettingsTrigger } from '@/components/settings/SettingsTrigger';
 import { WalletProvider } from '@/contexts/WalletContext';
 import RouteAnnouncer from '@/components/RouteAnnouncer';
 import Navbar from '@/components/Navbar';
+import NavigationErrorBoundary from '@/components/NavigationErrorBoundary';
 import HeaderActions from '@/components/HeaderActions';
 
 export default function RootLayout({
@@ -80,7 +81,9 @@ export default function RootLayout({
                       TalentTrust
                     </span>
                   </div>
-                  <Navbar />
+                  <NavigationErrorBoundary>
+                    <Navbar />
+                  </NavigationErrorBoundary>
                   <HeaderActions />
                 </header>
                 <main className="flex-1 p-6" tabIndex={-1} id="main-content">
