@@ -43,6 +43,5 @@
     "**/*.test.tsx",
     ".next/types/test",
     ".next/types/test/**/*"
-  ],
-
+  ]
 }
