@@ -6,9 +6,11 @@ import EmptyState from '../../components/EmptyState';
 import MilestonesList from '../../components/MilestonesList';
 import MilestoneFilter, { type MilestoneStatusFilter } from '../../components/milestones/MilestoneFilter';
 import { MilestoneCreationForm } from '../../components/milestones/MilestoneCreationForm';
-import { listMilestones, saveMilestone } from '@/lib/repository';
+import { listMilestones } from '@/lib/repository';
 import { getItem, setItem } from '@/lib/safeStorage';
 import type { Milestone } from '@/types/domain';
+import { useMilestonesOptimistic } from '@/hooks/useMilestonesOptimistic';
+import { useToast } from '@/components/toast/toast-provider';
 
 export const SAMPLE_DISMISSED_KEY = 'talenttrust-milestones-sample-dismissed';
 
@@ -64,7 +66,7 @@ function getValidStatus(param: string | null): MilestoneStatusFilter {
 }
 
 const MilestonesContent: React.FC = () => {
-  const [milestones, setMilestones] = useState<Milestone[]>(SAMPLE_MILESTONES);
+  const [milestones, setMilestonesRaw] = useState<Milestone[]>(SAMPLE_MILESTONES);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -73,6 +75,17 @@ const MilestonesContent: React.FC = () => {
   const initialStatus = getValidStatus(searchParams.get('status'));
   const [statusFilter, setStatusFilter] = useState<MilestoneStatusFilter>(initialStatus);
   const [showForm, setShowForm] = useState(false);
+
+  const { showError } = useToast();
+  const { milestones: optimisticMilestones, setMilestones, addMilestoneOptimistic } =
+    useMilestonesOptimistic(milestones);
+
+  // Keep the optimistic hook in sync when the page-level raw list changes
+  // (e.g. after initial hydration or dismiss-sample-banner).
+  useEffect(() => {
+    setMilestones(milestones);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [milestones]);
 
   // Sync state if searchParams change externally (e.g. back/forward navigation)
   useEffect(() => {
@@ -94,7 +107,7 @@ const MilestonesContent: React.FC = () => {
   useEffect(() => {
     const persisted = listMilestones();
     if (persisted.length > 0) {
-      setMilestones(persisted);
+      setMilestonesRaw(persisted);
       setIsDismissed(true);
     } else {
       try {
@@ -103,7 +116,7 @@ const MilestonesContent: React.FC = () => {
       } catch {
         setIsDismissed(true);
       }
-      setMilestones(SAMPLE_MILESTONES);
+      setMilestonesRaw(SAMPLE_MILESTONES);
     }
   }, []);
 
@@ -114,7 +127,7 @@ const MilestonesContent: React.FC = () => {
       // safeStorage failure resilience
     }
     setIsDismissed(true);
-    setMilestones([]);
+    setMilestonesRaw([]);
     setTimeout(() => {
       startFromScratchRef.current?.focus();
     }, 0);
@@ -122,7 +135,7 @@ const MilestonesContent: React.FC = () => {
 
   const isUsingSampleData = milestones === SAMPLE_MILESTONES;
   const showSampleBanner = isUsingSampleData && !isDismissed;
-  const displayMilestones = isUsingSampleData && isDismissed ? [] : milestones;
+  const displayMilestones = isUsingSampleData && isDismissed ? [] : optimisticMilestones;
 
   const filtered = useMemo(() => {
     if (statusFilter === 'All') return displayMilestones;
@@ -133,13 +146,18 @@ const MilestonesContent: React.FC = () => {
     setShowForm(true);
   }, []);
 
-  const handleSubmitMilestone = useCallback((milestone: Milestone) => {
-    saveMilestone(milestone);
-    const persisted = listMilestones();
-    setMilestones(persisted);
+  const handleSubmitMilestone = useCallback(async (milestone: Milestone) => {
+    const result = await addMilestoneOptimistic(milestone);
+    if (!result.success) {
+      showError({
+        title: 'Could not save milestone',
+        description: 'Your change has been rolled back. Please try again.',
+      });
+      return;
+    }
     setIsDismissed(true);
     setShowForm(false);
-  }, []);
+  }, [addMilestoneOptimistic, showError]);
 
   const handleCancelForm = useCallback(() => {
     setShowForm(false);
