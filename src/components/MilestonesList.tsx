@@ -3,7 +3,7 @@ import StatusBadge, { StatusType, statusColorMap, statusIconMap } from './Status
 import { usePreferences } from '@/lib/preferences';
 import { isDueSoon } from '@/lib/dueSoon';
 import { findCurrencyMismatches, normalizeCurrencyCode } from '@/lib/currencyMismatch';
-import { milestoneStatusTally } from '@/lib/milestoneStatusTally';
+import { milestoneStatusTally, STATUS_ORDER } from '@/lib/milestoneStatusTally';
 
 export type Milestone = {
   id: string;
@@ -96,6 +96,30 @@ const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) =
           ))}
         </div>
       )}
+
+      {/* Status legend: explains every possible status indicator shown in the list. */}
+      <div
+        id="milestones-status-legend"
+        className="mt-3"
+        role="list"
+        aria-label="Status legend"
+      >
+        <span className="text-xs font-medium text-slate-500">
+          Status key:
+        </span>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {STATUS_ORDER.map((status) => (
+            <span
+              key={status}
+              role="listitem"
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColorMap[status]}`}
+            >
+              <span aria-hidden="true">{statusIconMap[status]}</span>
+              {status}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {normalizedContractCurrency && mismatchedMilestones.length > 0 ? (
         <div
