@@ -34,8 +34,9 @@ const ContractsPage: React.FC = () => {
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
+  const [announcement, setAnnouncement] = useState('');
+  const previousContractsRef = useRef<Contract[]>(contracts);
+  const announcementTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Client-side filtered contracts derived from the search and status filters. */
   const filteredContracts = useMemo(() => {

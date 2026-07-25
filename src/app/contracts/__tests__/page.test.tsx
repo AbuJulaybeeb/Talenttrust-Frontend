@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import ContractsPage, { getContractsAnnouncementMessage } from '../page';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import ContractsPage from '../page';
 import * as repository from '@/lib/repository';
 
 import * as stellarAddress from '@/lib/stellarAddress';
