@@ -1,7 +1,17 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
-import MilestonesList from '../MilestonesList';
+
+const mockStatusBadge = jest.fn(({ status }: { status: string }) => <span>{status}</span>);
+
+jest.mock('../StatusBadge', () => ({
+  __esModule: true,
+  default: ({ status }: { status: string }) => mockStatusBadge({ status }),
+  statusColorMap: {},
+  statusIconMap: {},
+}));
+
+import MilestonesList, { filterMilestonesByTitle, sortMilestones, type SortOption } from '../MilestonesList';
 import type { Milestone } from '../MilestonesList';
 import { parseLocalDate, isDueSoon } from '../../lib/dueSoon';
 
@@ -110,6 +120,36 @@ describe('MilestonesList', () => {
   it('passes axe accessibility checks with a populated list', async () => {
     const { container } = render(<MilestonesList milestones={SAMPLE} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('does not re-render milestone rows when unrelated parent state changes', () => {
+    mockStatusBadge.mockClear();
+
+    const milestones: Milestone[] = [
+      { id: '1', title: 'Row A', status: 'Pending', payout: 500, currency: 'USD', dueDate: 'May 10, 2026' },
+      { id: '2', title: 'Row B', status: 'Active', payout: 1000, currency: 'USD', dueDate: 'Jun 1, 2026' },
+    ];
+
+    function Harness() {
+      const [count, setCount] = React.useState(0);
+
+      return (
+        <div>
+          <button type="button" onClick={() => setCount((value) => value + 1)}>
+            toggle unrelated state
+          </button>
+          <span>{count}</span>
+          <MilestonesList milestones={milestones} />
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    mockStatusBadge.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle unrelated state' }));
+
+    expect(mockStatusBadge).not.toHaveBeenCalled();
   });
 
   it('passes axe accessibility checks with a currency mismatch warning', async () => {
