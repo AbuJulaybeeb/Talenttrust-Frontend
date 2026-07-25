@@ -1032,7 +1032,7 @@ describe('Issue #528 – Keyboard Navigation and Semantic Structure', () => {
     });
 
     it('legend items are not interactive – no click handlers', () => {
-      const { container } = renderProfile({ name: 'Legend Static User', score: 3.5, history: HISTORY_EVENTS });
+      renderProfile({ name: 'Legend Static User', score: 3.5, history: HISTORY_EVENTS });
 
       const legendList = screen.getByRole('list', { name: /Reputation Level Legend/i });
       const items = within(legendList).getAllByRole('listitem');
