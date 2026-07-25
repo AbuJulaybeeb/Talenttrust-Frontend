@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getItem, setItem } from './safeStorage';
 
@@ -110,12 +110,6 @@ interface PreferencesContextType {
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'talenttrust-user-preferences';
-
-// Module-level fallback references so usePreferences() outside a provider
-// returns stable values instead of creating new objects on every call.
-const FALLBACK_UPDATE = () => {};
-const FALLBACK_FORMAT = (amount: number, currency: string = 'USD') =>
-  safeCurrencyFormat(amount, currency, 'en-US');
 
 /**
  * Sanitize an untrusted, already-JSON-parsed value into a valid
@@ -268,16 +262,18 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     applyTheme(preferences.theme);
   }, [preferences.theme, systemPrefersDark]);
 
-  const updatePreference = useCallback(<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+  const updatePreference = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
     setPreferences(prev => ({ ...prev, [key]: value }));
-  }, []);
+  };
 
-  // Extract the primitive so the callback only closes over amountFormat, not the
-  // entire preferences object.  This lets useCallback skip recreation when
-  // unrelated fields (theme, toastDensity, quietMode, toastDuration, etc.) change.
-  const { amountFormat } = preferences;
-
-  const formatAmount = useCallback((amount: number, currency: string = 'USD') => {
+  /**
+   * Format monetary values using the active amount preference.
+   * USD keeps the caller-provided currency, NGN forces Nigerian Naira,
+   * and compact keeps the caller-provided currency with compact notation.
+   */
+  const formatAmount = (amount: number, currency: string = 'USD') => {
+    const { amountFormat } = preferences;
+    
     // Determine which currency to use based on settings
     const activeCurrency = amountFormat === 'ngn' ? 'NGN' : currency;
     const locale = amountFormat === 'ngn' ? 'en-NG' : 'en-US';
@@ -289,15 +285,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     }
 
     return safeCurrencyFormat(amount, activeCurrency, locale);
-  }, [amountFormat]);
-
-  const value = useMemo(
-    () => ({ preferences, updatePreference, formatAmount }),
-    [preferences, updatePreference, formatAmount],
-  );
+  };
 
   return (
-    <PreferencesContext.Provider value={value}>
+    <PreferencesContext.Provider value={{ preferences, updatePreference, formatAmount }}>
       {children}
     </PreferencesContext.Provider>
   );
@@ -313,12 +304,12 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 export function usePreferences() {
   const context = useContext(PreferencesContext);
   if (context === undefined) {
-    // Return default preferences if used outside a provider (useful for testing).
-    // Reuse module-level stable references so consumers don't see new objects on every call.
+    // Return default preferences if used outside a provider (useful for testing)
     return {
       preferences: DEFAULT_PREFERENCES,
-      updatePreference: FALLBACK_UPDATE,
-      formatAmount: FALLBACK_FORMAT,
+      updatePreference: () => {},
+      formatAmount: (amount: number, currency: string = 'USD') => 
+        safeCurrencyFormat(amount, currency, 'en-US'),
     };
   }
   return context;

@@ -3,7 +3,6 @@
 import React, { useState, useCallback, FormEvent } from 'react';
 import { FormField } from './FormField';
 import { ErrorSummary } from './ErrorSummary';
-import { FormErrorBanner } from './FormErrorBanner';
 import { isValidStellarAddress } from '@/lib/stellarAddress';
 import { sanitizeUserText } from '@/lib/sanitizeUserText';
 import type { Contract } from '@/types/domain';
@@ -21,25 +20,6 @@ export interface ContractFormData {
 interface ContractCreationFormProps {
   onSubmit: (contract: Contract) => void;
   onCancel: () => void;
-  /**
-   * Optional initial data to pre-populate the form fields (e.g. loaded from
-   * a draft or existing contract). When `null` and `loadError` is set, the
-   * form shows an error state instead of a blank form body.
-   */
-  initialData?: {
-    contractName?: string;
-    totalValue?: string;
-    currency?: string;
-    parties?: Array<{ label: string; address: string }>;
-  } | null;
-  /**
-   * When non-null, a `FormErrorBanner` is shown describing a failure that
-   * occurred before this component mounted (e.g. loading pre-fill data).
-   * Pair with `onRetryLoad` to offer a keyboard-operable retry button.
-   */
-  loadError?: string | null;
-  /** Called when the user clicks "Try again" in the load-error banner. */
-  onRetryLoad?: () => void;
 }
 
 /**
@@ -58,21 +38,15 @@ interface ContractCreationFormProps {
 export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
   onSubmit,
   onCancel,
-  initialData,
-  loadError,
-  onRetryLoad,
 }) => {
-  const [contractName, setContractName] = useState(initialData?.contractName ?? '');
-  const [totalValue, setTotalValue] = useState(initialData?.totalValue ?? '');
-  const [currency, setCurrency] = useState(initialData?.currency ?? 'USD');
-  const [parties, setParties] = useState<Array<{ label: string; address: string }>>(
-    initialData?.parties ?? [
-      { label: '', address: '' },
-      { label: '', address: '' },
-    ],
-  );
+  const [contractName, setContractName] = useState('');
+  const [totalValue, setTotalValue] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  const [parties, setParties] = useState<Array<{ label: string; address: string }>>([
+    { label: '', address: '' },
+    { label: '', address: '' },
+  ]);
   const [errors, setErrors] = useState<Array<{ fieldId: string; message: string }>>([]);
-  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
 
   /**
    * Validates the form data and returns an array of error objects.
@@ -167,43 +141,15 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     return validationErrors;
   }, [contractName, totalValue, currency, parties]);
 
-  const validateAndSetErrors = useCallback(
-    (fieldId?: string) => {
-      const validationErrors = validateForm();
-      setErrors(validationErrors);
-
-      if (fieldId) {
-        setTouchedFields(prev => ({ ...prev, [fieldId]: true }));
-      }
-    },
-    [validateForm]
-  );
-
-  const markAllFieldsTouched = useCallback(() => {
-    const nextTouchedFields = {
-      contractName: true,
-      totalValue: true,
-      currency: true,
-      parties: true,
-      ...Object.fromEntries(parties.map((_, index) => [`party-label-${index}`, true])),
-      ...Object.fromEntries(parties.map((_, index) => [`party-address-${index}`, true])),
-    };
-
-    setTouchedFields(nextTouchedFields);
-  }, [parties]);
-
   /**
    * Handles form submission, validates input, and calls onSubmit if valid.
-   * Clears any prior submission-level error before each attempt.
    */
   const handleSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
       const validationErrors = validateForm();
-      markAllFieldsTouched();
       setErrors(validationErrors);
-      setSubmitError(null);
 
       if (validationErrors.length > 0) {
         return;
@@ -231,15 +177,9 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
         milestoneCount: 0,
       };
 
-      try {
-        onSubmit(contract);
-      } catch {
-        setSubmitError(
-          'Could not save the contract. Please check your connection and try again.',
-        );
-      }
+      onSubmit(contract);
     },
-    [contractName, totalValue, currency, parties, validateForm, markAllFieldsTouched, onSubmit]
+    [contractName, totalValue, currency, parties, validateForm, onSubmit]
   );
 
   /**
@@ -268,10 +208,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
   }, []);
 
   const getFieldError = (fieldId: string): string | undefined => {
-    if (!touchedFields[fieldId] && errors.length === 0) {
-      return undefined;
-    }
-
     return errors.find(e => e.fieldId === fieldId)?.message;
   };
 
@@ -287,42 +223,8 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
           Create New Contract
         </h2>
 
-        {loadError && initialData === null ? (
-          <div data-testid="form-load-error">
-            <FormErrorBanner
-              message={loadError}
-              onRetry={onRetryLoad}
-              retryLabel="Try again"
-              testId="form-load-error-banner"
-            />
-            <p className="mt-2 text-sm text-slate-600">
-              The form could not be loaded. Use the button above to retry, or{' '}
-              <button
-                type="button"
-                onClick={onCancel}
-                className="underline text-blue-600 hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
-              >
-                cancel
-              </button>{' '}
-              and try again later.
-            </p>
-          </div>
-        ) : (
         <form onSubmit={handleSubmit} noValidate>
           <ErrorSummary errors={errors} />
-
-          {/* Submission error — shown after onSubmit throws. */}
-          <FormErrorBanner
-            message={submitError}
-            onRetry={() => {
-              // Build a synthetic submit by re-running validation + submit path.
-              const syntheticEvent = {
-                preventDefault: () => {},
-              } as FormEvent<HTMLFormElement>;
-              handleSubmit(syntheticEvent);
-            }}
-            retryLabel="Try again"
-          />
 
           <FormField
             label="Contract Name"
@@ -334,7 +236,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
               type="text"
               value={contractName}
               onChange={e => setContractName(e.target.value)}
-              onBlur={() => validateAndSetErrors('contractName')}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Website Redesign Project"
             />
@@ -351,7 +252,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                 type="text"
                 value={totalValue}
                 onChange={e => setTotalValue(e.target.value)}
-                onBlur={() => validateAndSetErrors('totalValue')}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., 5000"
               />
@@ -366,7 +266,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
               <select
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
-                onBlur={() => validateAndSetErrors('currency')}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="USD">USD</option>
@@ -413,7 +312,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                       type="text"
                       value={party.label}
                       onChange={e => updateParty(index, 'label', e.target.value)}
-                      onBlur={() => validateAndSetErrors(`party-label-${index}`)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="e.g., Client, Freelancer"
                     />
@@ -430,7 +328,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                       type="text"
                       value={party.address}
                       onChange={e => updateParty(index, 'address', e.target.value)}
-                      onBlur={() => validateAndSetErrors(`party-address-${index}`)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                     />
@@ -464,7 +361,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
             </button>
           </div>
         </form>
-        )}
       </div>
     </div>
   );

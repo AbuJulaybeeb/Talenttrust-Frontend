@@ -149,16 +149,7 @@ describe('MilestonesPage — core rendering', () => {
     window.localStorage.setItem(SAMPLE_DISMISSED_KEY, 'true');
     await renderPage();
 
-    expect(screen.getAllByText('No milestones tracked').length).toBeGreaterThan(0);
-  });
-
-  it('announces the empty state for assistive tech via role="status" and aria-live="polite"', async () => {
-    window.localStorage.setItem(SAMPLE_DISMISSED_KEY, 'true');
-    await renderPage();
-
-    const announcer = screen.getByRole('status');
-    expect(announcer).toHaveAttribute('aria-live', 'polite');
-    expect(announcer).toHaveTextContent('No milestones tracked');
+    expect(screen.getByText('No milestones tracked')).toBeInTheDocument();
   });
 });
 

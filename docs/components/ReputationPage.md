@@ -233,6 +233,6 @@ npm test -- src/app/reputation/__tests__/page.test.tsx
 ## Files
 
 - **Page:** `src/app/reputation/page.tsx`
-- **Component:** `src/components/ReputationProfile.tsx` (see [ReputationProfile Component Documentation](ReputationProfile.md))
+- **Component:** `src/components/ReputationProfile.tsx`
 - **Tests:** `src/app/reputation/__tests__/page.test.tsx`
 - **Component Tests:** `src/components/ReputationProfile.test.tsx`

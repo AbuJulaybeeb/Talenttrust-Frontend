@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { SettingsPanel } from './SettingsPanel';
 
 export function SettingsTrigger() {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const handleClose = useCallback(() => {
+  const handleClose = () => {
     setIsOpen(false);
     requestAnimationFrame(() => triggerRef.current?.focus());
-  }, []);
+  };
 
   return (
     <>

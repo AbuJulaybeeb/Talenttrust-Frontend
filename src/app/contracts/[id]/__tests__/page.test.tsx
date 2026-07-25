@@ -260,9 +260,8 @@ describe('ContractProgress integration', () => {
     await renderPage();
 
     await waitFor(() => {
+      expect(screen.getByText('Paid')).toBeInTheDocument();
       expect(screen.getByText('Outstanding')).toBeInTheDocument();
-      // "Paid" appears both in the ContractProgress card and the status legend
-      expect(screen.getAllByText('Paid').length).toBeGreaterThanOrEqual(1);
     });
   });
 });

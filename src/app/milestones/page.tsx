@@ -6,11 +6,9 @@ import EmptyState from '../../components/EmptyState';
 import MilestonesList from '../../components/MilestonesList';
 import MilestoneFilter, { type MilestoneStatusFilter } from '../../components/milestones/MilestoneFilter';
 import { MilestoneCreationForm } from '../../components/milestones/MilestoneCreationForm';
-import { listMilestones } from '@/lib/repository';
+import { listMilestones, saveMilestone } from '@/lib/repository';
 import { getItem, setItem } from '@/lib/safeStorage';
 import type { Milestone } from '@/types/domain';
-import { useMilestonesOptimistic } from '@/hooks/useMilestonesOptimistic';
-import { useToast } from '@/components/toast/toast-provider';
 
 export const SAMPLE_DISMISSED_KEY = 'talenttrust-milestones-sample-dismissed';
 
@@ -66,7 +64,7 @@ function getValidStatus(param: string | null): MilestoneStatusFilter {
 }
 
 const MilestonesContent: React.FC = () => {
-  const [milestones, setMilestonesRaw] = useState<Milestone[]>(SAMPLE_MILESTONES);
+  const [milestones, setMilestones] = useState<Milestone[]>(SAMPLE_MILESTONES);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -75,18 +73,6 @@ const MilestonesContent: React.FC = () => {
   const initialStatus = getValidStatus(searchParams.get('status'));
   const [statusFilter, setStatusFilter] = useState<MilestoneStatusFilter>(initialStatus);
   const [showForm, setShowForm] = useState(false);
-  const [loadError, setLoadError] = useState<Error | null>(null);
-
-  const { showError } = useToast();
-  const { milestones: optimisticMilestones, setMilestones, addMilestoneOptimistic } =
-    useMilestonesOptimistic(milestones);
-
-  // Keep the optimistic hook in sync when the page-level raw list changes
-  // (e.g. after initial hydration or dismiss-sample-banner).
-  useEffect(() => {
-    setMilestones(milestones);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [milestones]);
 
   // Sync state if searchParams change externally (e.g. back/forward navigation)
   useEffect(() => {
@@ -104,39 +90,11 @@ const MilestonesContent: React.FC = () => {
     }
   }, [statusFilter, router, searchParams]);
 
-  /**
-   * Loads persisted milestones from the repository. Reused on mount and as the
-   * keyboard-operable "Retry" action in the error state — `listMilestones` is
-   * documented as never throwing, but the repository read is wrapped here so a
-   * future storage failure (or a thrown error in tests) surfaces as a distinct,
-   * announced error state instead of leaving the page blank.
-   */
-  const loadMilestonesData = useCallback(() => {
-    try {
-      const persisted = listMilestones();
-      setLoadError(null);
-      if (persisted.length > 0) {
-        setMilestones(persisted);
-        setIsDismissed(true);
-      } else {
-        try {
-          const dismissed = getItem(SAMPLE_DISMISSED_KEY) === 'true';
-          setIsDismissed(dismissed);
-        } catch {
-          setIsDismissed(true);
-        }
-        setMilestones(SAMPLE_MILESTONES);
-      }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err : new Error('Failed to load milestones.'));
-    }
-  }, []);
-
   // Rehydrate from localStorage after the client mounts to avoid SSR mismatches.
   useEffect(() => {
     const persisted = listMilestones();
     if (persisted.length > 0) {
-      setMilestonesRaw(persisted);
+      setMilestones(persisted);
       setIsDismissed(true);
     } else {
       try {
@@ -145,39 +103,8 @@ const MilestonesContent: React.FC = () => {
       } catch {
         setIsDismissed(true);
       }
-      setMilestonesRaw(SAMPLE_MILESTONES);
+      setMilestones(SAMPLE_MILESTONES);
     }
-
-    loadMilestonesData();
-  }, []);
-
-  const handleRetry = useCallback(() => {
-    loadMilestonesData();
-  }, [loadMilestonesData]);
-
-  // Persist preferences to storage on state change
-  const isMounted = useRef(false);
-  useEffect(() => {
-    if (!isMounted.current) {
-      isMounted.current = true;
-      return;
-    }
-    try {
-      setItem(
-        PREFERENCES_STORAGE_KEY,
-        JSON.stringify({ filter: statusFilter, sort: sortBy })
-      );
-    } catch {
-      // safe fallback
-    }
-  }, [statusFilter, sortBy]);
-
-  const handleFilterChange = useCallback((newFilter: MilestoneStatusFilter) => {
-    setStatusFilter(newFilter);
-  }, []);
-
-  const handleSortChange = useCallback((newSort: MilestoneSortOption) => {
-    setSortBy(newSort);
   }, []);
 
   const handleDismissSampleBanner = useCallback(() => {
@@ -187,7 +114,7 @@ const MilestonesContent: React.FC = () => {
       // safeStorage failure resilience
     }
     setIsDismissed(true);
-    setMilestonesRaw([]);
+    setMilestones([]);
     setTimeout(() => {
       startFromScratchRef.current?.focus();
     }, 0);
@@ -195,14 +122,7 @@ const MilestonesContent: React.FC = () => {
 
   const isUsingSampleData = milestones === SAMPLE_MILESTONES;
   const showSampleBanner = isUsingSampleData && !isDismissed;
-  const displayMilestones = isUsingSampleData && isDismissed ? [] : optimisticMilestones;
-
-  // Fetch-state model shared with other views (see hooks/useFetchState.ts):
-  // 'error' takes precedence, then 'empty', then 'success' — mutually exclusive
-  // so exactly one state renders at a time.
-  const pageState: FetchState = loadError ? 'error' : displayMilestones.length === 0 ? 'empty' : 'success';
-  const loadErrorMessage =
-    loadError?.message || 'Failed to load milestones. Please check your connection and try again.';
+  const displayMilestones = isUsingSampleData && isDismissed ? [] : milestones;
 
   const filtered = useMemo(() => {
     if (statusFilter === 'All') return displayMilestones;
@@ -213,18 +133,13 @@ const MilestonesContent: React.FC = () => {
     setShowForm(true);
   }, []);
 
-  const handleSubmitMilestone = useCallback(async (milestone: Milestone) => {
-    const result = await addMilestoneOptimistic(milestone);
-    if (!result.success) {
-      showError({
-        title: 'Could not save milestone',
-        description: 'Your change has been rolled back. Please try again.',
-      });
-      return;
-    }
+  const handleSubmitMilestone = useCallback((milestone: Milestone) => {
+    saveMilestone(milestone);
+    const persisted = listMilestones();
+    setMilestones(persisted);
     setIsDismissed(true);
     setShowForm(false);
-  }, [addMilestoneOptimistic, showError]);
+  }, []);
 
   const handleCancelForm = useCallback(() => {
     setShowForm(false);
@@ -234,52 +149,7 @@ const MilestonesContent: React.FC = () => {
     <main className="min-h-screen p-8">
       <h1 className="text-2xl font-bold mb-6">Milestones</h1>
 
-      {pageState === 'error' ? (
-        <>
-          <div role="alert" aria-live="assertive" aria-atomic="true" className="sr-only">
-            {loadErrorMessage}
-          </div>
-          <div
-            data-testid="milestones-error"
-            className="flex flex-col items-center justify-center rounded-3xl border border-red-200 bg-red-50 p-8 text-center shadow-sm max-w-2xl mx-auto my-8"
-          >
-            <div
-              className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 text-red-600 ring-1 ring-red-200"
-              aria-hidden="true"
-            >
-              <svg
-                className="h-8 w-8"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-            </div>
-            <h2 className="mb-2 text-xl font-semibold text-red-950">
-              Failed to load milestones
-            </h2>
-            <p className="mb-6 max-w-md text-sm leading-6 text-red-800">
-              {loadErrorMessage}
-            </p>
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-red-900"
-              aria-label="Retry loading milestones"
-            >
-              Retry
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          {showSampleBanner && (
+      {showSampleBanner && (
         <div
           data-testid="sample-data-banner"
           role="status"
@@ -316,50 +186,22 @@ const MilestonesContent: React.FC = () => {
         </div>
       )}
 
-      {pageState === 'empty' ? (
-        <>
-          <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-            No milestones tracked
-          </div>
-          <EmptyState
-            illustration="milestones"
-            title="No milestones tracked"
-            description="Track your progress by adding milestones to your contracts. Milestones help you stay organized and ensure timely delivery."
-            actionLabel="Add Milestone"
-            onAction={handleAddMilestone}
-          />
-        </>
+      {displayMilestones.length === 0 ? (
+        <EmptyState
+          illustration="milestones"
+          title="No milestones tracked"
+          description="Track your progress by adding milestones to your contracts. Milestones help you stay organized and ensure timely delivery."
+          actionLabel="Add Milestone"
+          onAction={handleAddMilestone}
+        />
       ) : (
         <>
-          <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-            {`${displayMilestones.length} milestone${displayMilestones.length === 1 ? '' : 's'} loaded`}
-          </div>
-          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <MilestoneFilter
-                selected={statusFilter}
-                onChange={handleFilterChange}
-                resultCount={filtered.length}
-              />
-              <div className="flex flex-col mb-6">
-                <label htmlFor="sort-milestones" className="text-sm font-medium text-slate-700 mb-3">
-                  Sort by
-                </label>
-                <select
-                  id="sort-milestones"
-                  value={sortBy}
-                  onChange={(e) => handleSortChange(e.target.value as MilestoneSortOption)}
-                  className="rounded-2xl border border-slate-200 px-4 py-1.5 text-sm text-slate-900 bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="dueDate-asc">Due Date (Earliest)</option>
-                  <option value="dueDate-desc">Due Date (Latest)</option>
-                  <option value="payout-asc">Payout (Low to High)</option>
-                  <option value="payout-desc">Payout (High to Low)</option>
-                  <option value="title-asc">Title (A to Z)</option>
-                  <option value="title-desc">Title (Z to A)</option>
-                </select>
-              </div>
-            </div>
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <MilestoneFilter
+              selected={statusFilter}
+              onChange={setStatusFilter}
+              resultCount={filtered.length}
+            />
             <button
               type="button"
               onClick={handleAddMilestone}
@@ -381,8 +223,6 @@ const MilestonesContent: React.FC = () => {
             <MilestonesList milestones={filtered} />
           )}
         </>
-      )}
-      </>
       )}
 
       {showForm && (

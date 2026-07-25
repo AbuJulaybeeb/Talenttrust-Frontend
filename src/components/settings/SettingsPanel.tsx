@@ -1,228 +1,202 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { usePreferences, Theme, AmountFormat, ToastDensity } from '@/lib/preferences';
+
+const FOCUSABLE_SELECTORS =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type Theme = 'light' | 'dark' | 'system';
-type AmountFormat = 'usd' | 'eur' | 'gbp' | 'ngn' | 'compact';
-type ToastDensity = 'comfortable' | 'compact';
-
-interface StoredPreferences {
-  theme?: Theme;
-  amountFormat?: AmountFormat;
-  toastDensity?: ToastDensity;
-  quietMode?: boolean;
-}
-
-const STORAGE_KEY = 'talenttrust-user-preferences';
-
-const themes: Array<{ value: Theme; label: string }> = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
-];
-
-const currencies: Array<{ value: AmountFormat; label: string }> = [
-  { value: 'usd', label: 'USD' },
-  { value: 'eur', label: 'EUR' },
-  { value: 'gbp', label: 'GBP' },
-  { value: 'ngn', label: 'NGN' },
-  { value: 'compact', label: 'Compact' },
-];
-
-const densities: Array<{ value: ToastDensity; label: string }> = [
-  { value: 'comfortable', label: 'Comfortable' },
-  { value: 'compact', label: 'Compact' },
-];
-
-function readPreferences(): Required<StoredPreferences> {
-  const defaults: Required<StoredPreferences> = {
-    theme: 'system',
-    amountFormat: 'usd',
-    toastDensity: 'comfortable',
-    quietMode: false,
-  };
-
-  if (typeof window === 'undefined') return defaults;
-
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}') as StoredPreferences;
-    return { ...defaults, ...stored };
-  } catch {
-    return defaults;
-  }
-}
-
-function savePreferences(preferences: Required<StoredPreferences>) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
-}
-
-interface RadioGroupProps<T extends string> {
-  label: string;
-  name: string;
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  onChange: (value: T) => void;
-}
-
-function RadioGroup<T extends string>({
-  label,
-  name,
-  value,
-  options,
-  onChange,
-}: RadioGroupProps<T>) {
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === value),
-  );
-
-  const moveFocus = (index: number) => {
-    const nextIndex = (index + options.length) % options.length;
-    onChange(options[nextIndex].value);
-    refs.current[nextIndex]?.focus();
-  };
-
-  return (
-    <fieldset className="space-y-3">
-      <legend className="text-sm font-medium text-[var(--foreground)]">{label}</legend>
-      <div
-        className="flex flex-wrap gap-2"
-        role="radiogroup"
-        aria-label={label}
-      >
-        {options.map((option, index) => {
-          const checked = option.value === value;
-          return (
-            <button
-              key={option.value}
-              ref={(element) => {
-                refs.current[index] = element;
-              }}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              tabIndex={checked || (selectedIndex === 0 && index === 0) ? 0 : -1}
-              className={`rounded-md border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
-                checked
-                  ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
-                  : 'border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]'
-              }`}
-              onClick={() => onChange(option.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  moveFocus(index + 1);
-                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  moveFocus(index - 1);
-                } else if (event.key === 'Home') {
-                  event.preventDefault();
-                  moveFocus(0);
-                } else if (event.key === 'End') {
-                  event.preventDefault();
-                  moveFocus(options.length - 1);
-                }
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-      <span className="sr-only" id={`${name}-description`}>{label}</span>
-    </fieldset>
-  );
-}
-
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const [preferences, setPreferences] = useState<Required<StoredPreferences>>(readPreferences);
+  const { preferences, updatePreference } = usePreferences();
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * Focus management effect for modal dialog accessibility.
+   * - Sets initial focus to the close button when dialog opens
+   * - Implements focus trapping to prevent focus from leaving the dialog
+   * - Handles Tab key wrapping from last to first element
+   * - Handles Shift+Tab wrapping from first to last element
+   * - Closes dialog on Escape key press
+   */
   useEffect(() => {
-    if (isOpen) setPreferences(readPreferences());
-  }, [isOpen]);
+    if (!isOpen) return;
+    const panel = panelRef.current;
+    if (!panel) return;
 
-  const update = <K extends keyof Required<StoredPreferences>>(
-    key: K,
-    value: Required<StoredPreferences>[K],
-  ) => {
-    setPreferences((current) => {
-      const next = { ...current, [key]: value };
-      savePreferences(next);
-      return next;
-    });
-  };
+    // Set initial focus to the close button
+    const closeBtn = panel.querySelector<HTMLElement>('[aria-label="Close settings"]');
+    closeBtn?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const els = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS));
+        if (els.length === 0) return;
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
-    <aside
-      aria-label="Settings"
-      className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto bg-[var(--background)] p-6 shadow-xl"
-    >
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-[var(--foreground)]">Settings</h2>
-        <button
-          type="button"
-          aria-label="Close settings"
-          className="rounded-md p-2 text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
-          onClick={onClose}
-        >
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
+    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 transition-opacity backdrop-blur-sm"
+        onClick={onClose}
+      />
 
-      <div className="space-y-8">
-        <section aria-labelledby="appearance-heading" className="space-y-6">
-          <h3 id="appearance-heading" className="text-base font-semibold text-[var(--foreground)]">Appearance</h3>
-          <RadioGroup
-            label="Theme"
-            name="theme"
-            value={preferences.theme}
-            options={themes}
-            onChange={(value) => update('theme', value)}
-          />
-          <RadioGroup
-            label="Currency Display"
-            name="currency"
-            value={preferences.amountFormat}
-            options={currencies}
-            onChange={(value) => update('amountFormat', value)}
-          />
-        </section>
-
-        <section aria-labelledby="notifications-heading" className="space-y-6">
-          <h3 id="notifications-heading" className="text-base font-semibold text-[var(--foreground)]">Notifications</h3>
-          <RadioGroup
-            label="Toast Density"
-            name="toast-density"
-            value={preferences.toastDensity}
-            options={densities}
-            onChange={(value) => update('toastDensity', value)}
-          />
-          <button
-            type="button"
-            role="switch"
-            aria-checked={preferences.quietMode}
-            aria-label="Quiet Mode"
-            className="flex w-full items-center justify-between rounded-md p-2 text-left text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
-            onClick={() => update('quietMode', !preferences.quietMode)}
+      {/* Drawer */}
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-panel-title"
+        className="relative w-full max-w-md bg-[var(--background)] shadow-xl flex flex-col h-full border-l border-[var(--border)]"
+      >
+        <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
+          <h2 id="settings-panel-title" className="text-xl font-bold text-[var(--foreground)]">Settings</h2>
+          <button 
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-[var(--accent)] text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+            aria-label="Close settings"
           >
-            <span>Quiet Mode</span>
-            <span aria-hidden="true" className="rounded-full border px-2 py-1">
-              {preferences.quietMode ? 'On' : 'Off'}
-            </span>
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
-        </section>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {/* Appearance Section */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Appearance</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label id="theme-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Theme</label>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="theme-label" aria-label="Theme">
+                  {(['light', 'dark', 'system'] as Theme[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => updatePreference('theme', t)}
+                      role="radio"
+                      aria-checked={preferences.theme === t}
+                      className={`px-3 py-2 text-sm rounded-md border capitalize transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
+                        preferences.theme === t 
+                          ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
+                          : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label id="currency-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Currency Display</label>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="currency-label" aria-label="Currency Display">
+                  {(['usd', 'ngn', 'compact'] as AmountFormat[]).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => updatePreference('amountFormat', f)}
+                      role="radio"
+                      aria-checked={preferences.amountFormat === f}
+                      className={`px-3 py-2 text-sm rounded-md border uppercase transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
+                        preferences.amountFormat === f 
+                          ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
+                          : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Notifications Section */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Notifications</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label id="density-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Toast Density</label>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby="density-label" aria-label="Toast Density">
+                  {(['relaxed', 'compact'] as ToastDensity[]).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => updatePreference('toastDensity', d)}
+                      role="radio"
+                      aria-checked={preferences.toastDensity === d}
+                      className={`px-3 py-2 text-sm rounded-md border capitalize transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
+                        preferences.toastDensity === d 
+                          ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]' 
+                          : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--muted-foreground)]'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <label id="quiet-mode-label" className="text-sm font-medium text-[var(--foreground)]">Quiet Mode</label>
+                  <p className="text-xs text-[var(--muted-foreground)]">Suppress success notifications</p>
+                </div>
+                <button
+                  onClick={() => updatePreference('quietMode', !preferences.quietMode)}
+                  role="switch"
+                  aria-checked={preferences.quietMode}
+                  aria-labelledby="quiet-mode-label"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
+                    preferences.quietMode ? 'bg-[var(--primary)]' : 'bg-[var(--muted)]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      preferences.quietMode ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="p-6 border-t border-[var(--border)] bg-[var(--surface)]">
+          <button 
+            onClick={onClose}
+            className="w-full py-2 px-4 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-md font-medium hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+          >
+            Done
+          </button>
+        </div>
       </div>
-    </aside>
+    </div>
   );
 }
-
-export default SettingsPanel;
