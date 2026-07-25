@@ -5,9 +5,9 @@ import { FormField } from '@/components/FormField';
 import { ErrorSummary } from '@/components/ErrorSummary';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { sanitizeUserText } from '@/lib/sanitizeUserText';
-import { validateMilestone, MAX_MILESTONE_TITLE_LENGTH } from '@/lib/validateMilestone';
 import type { Milestone } from '@/types/domain';
-import type { ValidationError } from '@/lib/validateLogin';
+
+export const MAX_MILESTONE_TITLE_LENGTH = 200;
 
 /** Status options available when creating a milestone. */
 const STATUS_OPTIONS: Milestone['status'][] = [
@@ -70,28 +70,43 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
   const [currency, setCurrency] = useState<string>('USD');
   const [status, setStatus] = useState<Milestone['status']>('Pending');
   const [dueDate, setDueDate] = useState('');
-  const [errors, setErrors] = useState<ValidationError[]>([]);
-
-  const clearFieldError = useCallback((fieldId: string) => {
-    setErrors((prev) => prev.filter((e) => e.fieldId !== fieldId));
-  }, []);
+  const [errors, setErrors] = useState<Array<{ fieldId: string; message: string }>>([]);
 
   /**
-   * Validates form fields using `validateMilestone`.
+   * Validates form fields and returns an array of error objects.
+   * An empty array means the form is valid.
    */
-  const validateForm = useCallback((): ValidationError[] => {
-    return validateMilestone({
-      title,
-      payout,
-      currency,
-      status,
-      dueDate,
-    });
-  }, [title, payout, currency, status, dueDate]);
+  const validateForm = useCallback((): Array<{ fieldId: string; message: string }> => {
+    const errs: Array<{ fieldId: string; message: string }> = [];
+
+    const sanitizedTitle = sanitizeUserText(title, MAX_MILESTONE_TITLE_LENGTH);
+    const unboundedTitle = sanitizeUserText(title, Number.MAX_SAFE_INTEGER);
+    if (!sanitizedTitle) {
+      errs.push({ fieldId: 'milestone-title', message: 'Title is required' });
+    } else if (unboundedTitle.length > MAX_MILESTONE_TITLE_LENGTH) {
+      errs.push({
+        fieldId: 'milestone-title',
+        message: `Title must be no more than ${MAX_MILESTONE_TITLE_LENGTH} characters`,
+      });
+    }
+
+    const numericPayout = parseFloat(payout);
+    if (!payout.trim()) {
+      errs.push({ fieldId: 'milestone-payout', message: 'Payout amount is required' });
+    } else if (isNaN(numericPayout) || numericPayout <= 0) {
+      errs.push({ fieldId: 'milestone-payout', message: 'Payout must be a positive number' });
+    }
+
+    if (!currency.trim()) {
+      errs.push({ fieldId: 'milestone-currency', message: 'Currency is required' });
+    }
+
+    return errs;
+  }, [title, payout, currency]);
 
   /**
    * Handles form submission: validates, then calls `onSubmit` with the
-   * constructed `Milestone` object on success. Blocks submission if invalid.
+   * constructed `Milestone` object on success.
    */
   const handleSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -165,10 +180,7 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
               ref={titleInputRef}
               type="text"
               value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                clearFieldError('milestone-title');
-              }}
+              onChange={(e) => setTitle(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Frontend Development – Sprint 1"
             />
@@ -185,10 +197,7 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
                 type="text"
                 inputMode="decimal"
                 value={payout}
-                onChange={(e) => {
-                  setPayout(e.target.value);
-                  clearFieldError('milestone-payout');
-                }}
+                onChange={(e) => setPayout(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., 2500"
               />
@@ -202,10 +211,7 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
             >
               <select
                 value={currency}
-                onChange={(e) => {
-                  setCurrency(e.target.value);
-                  clearFieldError('milestone-currency');
-                }}
+                onChange={(e) => setCurrency(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {CURRENCY_OPTIONS.map((c) => (
@@ -220,10 +226,7 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
           <FormField label="Status" id="milestone-status">
             <select
               value={status}
-              onChange={(e) => {
-                setStatus(e.target.value as Milestone['status']);
-                clearFieldError('milestone-status');
-              }}
+              onChange={(e) => setStatus(e.target.value as Milestone['status'])}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {STATUS_OPTIONS.map((s) => (
@@ -237,18 +240,14 @@ export const MilestoneCreationForm: React.FC<MilestoneCreationFormProps> = ({
           <FormField
             label="Due Date"
             id="milestone-dueDate"
-            error={getFieldError('milestone-dueDate')}
-            helperText="Optional — e.g., 2025-06-01"
+            helperText="Optional — e.g., Jun 1, 2025"
           >
             <input
               type="text"
               value={dueDate}
-              onChange={(e) => {
-                setDueDate(e.target.value);
-                clearFieldError('milestone-dueDate');
-              }}
+              onChange={(e) => setDueDate(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="YYYY-MM-DD"
+              placeholder="Jun 1, 2025"
             />
           </FormField>
 

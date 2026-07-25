@@ -51,9 +51,7 @@ import { SettingsTrigger } from '@/components/settings/SettingsTrigger';
 import { WalletProvider } from '@/contexts/WalletContext';
 import RouteAnnouncer from '@/components/RouteAnnouncer';
 import Navbar from '@/components/Navbar';
-import NavigationErrorBoundary from '@/components/NavigationErrorBoundary';
 import HeaderActions from '@/components/HeaderActions';
-import CommandPalette from '@/components/CommandPalette';
 
 export default function RootLayout({
   children,
@@ -75,7 +73,6 @@ export default function RootLayout({
                 Skip to main content
               </a>
               <RouteAnnouncer />
-              <CommandPalette />
               <div className="min-h-screen bg-slate-50 flex flex-col">
                 <header className="sticky top-0 z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur-md">
                   <div className="flex items-center gap-2">
@@ -83,9 +80,7 @@ export default function RootLayout({
                       TalentTrust
                     </span>
                   </div>
-                  <NavigationErrorBoundary>
-                    <Navbar />
-                  </NavigationErrorBoundary>
+                  <Navbar />
                   <HeaderActions />
                 </header>
                 <main className="flex-1 p-6" tabIndex={-1} id="main-content">
@@ -93,7 +88,6 @@ export default function RootLayout({
                 </main>
               </div>
               <SettingsTrigger />
-              <CommandPalette />
             </WalletProvider>
           </ToastProvider>
         </PreferencesProvider>

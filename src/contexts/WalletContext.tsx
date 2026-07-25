@@ -29,12 +29,6 @@ export type WalletContextType = {
   isConnecting: boolean;
 
   /**
-   * `true` during initial client-side storage rehydration or wallet state
-   * initialization.
-   */
-  isLoading?: boolean;
-
-  /**
    * Human-readable error message from the most recent failed `connect()`
    * attempt, or `null` when no error is present. Cleared automatically at the
    * start of each new `connect()` call.
@@ -44,7 +38,6 @@ export type WalletContextType = {
    * - {@link USER_REJECTED} – user dismissed the approval prompt.
    */
   error: string | null;
-  balance: number;
 
   /**
    * Initiates a wallet connection sequence.
@@ -73,7 +66,6 @@ export type WalletContextType = {
    * and cancels any running inactivity-timeout timer.
    */
   disconnect: () => void;
-  performWalletAction: (amount: number, apiCall: () => Promise<number>) => Promise<void>;
 };
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -100,15 +92,13 @@ export const MOCKED_STELLAR_ADDRESS = 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBA
  * ```
  *
  * ## Exposed context fields
- * | Field               | Type                  | Description                                      |
- * |---------------------|-----------------------|--------------------------------------------------|
- * | `address`           | `string \| null`      | Connected Stellar public key; `null` if none.    |
- * | `isConnecting`      | `boolean`             | `true` while a connection attempt is in flight.  |
- * | `error`             | `string \| null`      | Last connection error message, or `null`.        |
- * | `balance`           | `number`              | Current balance including pending optimistic actions. |
- * | `connect`           | `() => Promise<void>` | Initiates a connection attempt (currently mock). |
- * | `disconnect`        | `() => void`          | Clears session state and storage.                |
- * | `performWalletAction` | `Function`          | Executes an optimistic wallet action with rollback.|
+ * | Field          | Type                  | Description                                      |
+ * |----------------|-----------------------|--------------------------------------------------|
+ * | `address`      | `string \| null`      | Connected Stellar public key; `null` if none.    |
+ * | `isConnecting` | `boolean`             | `true` while a connection attempt is in flight.  |
+ * | `error`        | `string \| null`      | Last connection error message, or `null`.        |
+ * | `connect`      | `() => Promise<void>` | Initiates a connection attempt (currently mock). |
+ * | `disconnect`   | `() => void`          | Clears session state and storage.                |
  *
  * ## Idle auto-disconnect
  * When `idleTimeout` is a positive number, the provider listens for pointer,
@@ -116,33 +106,24 @@ export const MOCKED_STELLAR_ADDRESS = 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBA
  * `idleTimeout` milliseconds, `disconnect()` is called automatically and a
  * toast notification is shown. Pass `0` (the default) to disable this feature.
  *
- * @param children       - React subtree that requires wallet context.
- * @param idleTimeout    - Inactivity duration in milliseconds before
- *                         auto-disconnect. Defaults to `0` (disabled).
- * @param initialBalance - Starting balance of the wallet. Defaults to `0`.
+ * @param children    - React subtree that requires wallet context.
+ * @param idleTimeout - Inactivity duration in milliseconds before
+ *                      auto-disconnect. Defaults to `0` (disabled).
  */
 
 export function WalletProvider({
   children,
   idleTimeout: propIdleTimeout,
-  initialBalance = 0,
 }: {
   children: ReactNode;
   idleTimeout?: number;
-  initialBalance?: number;
 }) {
   const { preferences } = usePreferences();
   const idleTimeout = propIdleTimeout !== undefined ? propIdleTimeout : preferences.idleDisconnectMs;
 
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [baseBalance, setBaseBalance] = useState<number>(initialBalance);
-  const [pendingTxs, setPendingTxs] = useState<{ id: string; amount: number }[]>([]);
-
-  const balance = baseBalance + pendingTxs.reduce((acc, tx) => acc + tx.amount, 0);
-
   // Safely obtain toast functions; fallback to no-ops if provider is absent
   // (e.g. during unit tests that render WalletProvider without ToastProvider).
   const useSafeToast = () => {
@@ -156,6 +137,8 @@ export function WalletProvider({
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const STORAGE_KEY = 'wallet_connected_address';
+
+
 
   const disconnect = useCallback(() => {
     setAddress(null);
@@ -189,7 +172,6 @@ export function WalletProvider({
     if (stored) {
       setAddress(stored);
     }
-    setIsLoading(false);
   }, []);
 
   // Idle auto‑disconnect handling
@@ -262,28 +244,10 @@ export function WalletProvider({
     } finally {
       setIsConnecting(false);
     }
-  }, [showError]);
-
-  const performWalletAction = useCallback(async (amount: number, apiCall: () => Promise<number>) => {
-    const txId = `${Date.now()}-${Math.random()}`;
-    
-    setPendingTxs((prev) => [...prev, { id: txId, amount }]);
-
-    try {
-      const newBaseBalance = await apiCall();
-      setBaseBalance(newBaseBalance);
-    } catch (err) {
-      showError({
-        title: 'Action failed',
-        description: 'Wallet action failed. Reverting changes.',
-      });
-    } finally {
-      setPendingTxs((prev) => prev.filter((t) => t.id !== txId));
-    }
-  }, [showError]);
+  }, []);
 
   return (
-    <WalletContext.Provider value={{ address, isConnecting, isLoading, error, connect, disconnect }}>
+    <WalletContext.Provider value={{ address, isConnecting, error, connect, disconnect }}>
       {children}
     </WalletContext.Provider>
   );
@@ -303,7 +267,7 @@ export function WalletProvider({
  *
  * @example
  * ```tsx
- * const { address, isConnecting, connect, disconnect, error, balance, performWalletAction } = useWallet();
+ * const { address, isConnecting, connect, disconnect, error } = useWallet();
  * ```
  *
  * @returns The current {@link WalletContextType} value.

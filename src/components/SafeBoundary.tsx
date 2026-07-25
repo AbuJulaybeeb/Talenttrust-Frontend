@@ -31,11 +31,7 @@ export default class SafeBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex flex-col items-center justify-center p-8 rounded-lg border border-red-200 bg-red-50 text-center space-y-4"
-        >
+        <div className="flex flex-col items-center justify-center p-8 rounded-lg border border-red-200 bg-red-50 text-center space-y-4">
           <p className="text-red-700 font-medium">
             This section failed to load.
           </p>

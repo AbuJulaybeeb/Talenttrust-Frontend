@@ -5,22 +5,10 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useToast } from '@/components/toast/toast-provider';
 import { truncateAddress } from '@/lib/truncateAddress';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
-import { WalletSkeleton } from '@/components/WalletSkeleton';
 
-export interface WalletConnectButtonProps {
-  /**
-   * Optional property to force/override the wallet loading skeleton state.
-   */
-  isLoading?: boolean;
-}
-
-export const WalletConnectButton: React.FC<WalletConnectButtonProps> = ({
-  isLoading: propIsLoading,
-}) => {
-  const { address, isConnecting, isLoading: contextIsLoading, error, connect, disconnect } = useWallet();
+export const WalletConnectButton = () => {
+  const { address, isConnecting, error, connect, disconnect } = useWallet();
   const { showError } = useToast();
-
-  const isLoading = propIsLoading ?? (contextIsLoading || isConnecting);
 
   const { copied, copy } = useCopyToClipboard({
     delay: 2000,
@@ -46,6 +34,11 @@ export const WalletConnectButton: React.FC<WalletConnectButtonProps> = ({
    * (insecure contexts, older browsers, or denied permissions) and wraps
    * the async write in a try/catch so failures surface as user-visible
    * error toasts rather than unhandled promise rejections.
+   *
+   * - Sets `copied = true` **only** when the write actually succeeds,
+   *   reverting to `false` after 2 seconds.
+   * - On any failure, triggers an error toast via `showError` without
+   *   logging sensitive address data to the console.
    */
   const handleCopy = async () => {
     if (!address) return;
@@ -68,10 +61,6 @@ export const WalletConnectButton: React.FC<WalletConnectButtonProps> = ({
         </button>
       </div>
     );
-  }
-
-  if (isLoading) {
-    return <WalletSkeleton />;
   }
 
   if (address) {
@@ -116,10 +105,29 @@ export const WalletConnectButton: React.FC<WalletConnectButtonProps> = ({
   return (
     <button
       onClick={connect}
+      disabled={isConnecting}
       aria-label="Connect wallet"
-      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
     >
-      <span>Connect Wallet</span>
+      {isConnecting ? (
+        <>
+          {/* animate-spin is halted by the @media (prefers-reduced-motion: reduce)
+              rule in globals.css. The SVG remains visible as a static loading
+              indicator so the connecting state is still perceivable without motion. */}
+          <svg
+            className="h-4 w-4 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span>Connecting...</span>
+        </>
+      ) : (
+        <span>Connect Wallet</span>
+      )}
     </button>
   );
 };

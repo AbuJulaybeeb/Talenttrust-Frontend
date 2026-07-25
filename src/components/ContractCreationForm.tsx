@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useCallback, useRef, FormEvent } from 'react';
+import React, { useState, useCallback, FormEvent } from 'react';
 import { FormField } from './FormField';
 import { ErrorSummary } from './ErrorSummary';
 import { isValidStellarAddress } from '@/lib/stellarAddress';
 import { sanitizeUserText } from '@/lib/sanitizeUserText';
-import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import type { Contract } from '@/types/domain';
 
 export const MAX_CONTRACT_NAME_LENGTH = 200;
@@ -35,23 +34,11 @@ interface ContractCreationFormProps {
  * - Currency is required
  *
  * Errors are surfaced via ErrorSummary for screen reader accessibility.
- *
- * Keyboard operability: uses the shared `useDialogFocusTrap` hook (the same
- * one `MilestoneCreationForm` uses) so that opening the dialog moves focus
- * to the Contract Name field, Tab/Shift+Tab wrap at the dialog's first and
- * last focusable elements instead of escaping into the page behind it, and
- * Escape closes the dialog and returns focus to whatever triggered it. Every
- * control here (`input`, `select`, `button`) is a native, inherently
- * keyboard-operable element — Add/Remove Party and Cancel/Create Contract
- * are `<button>`s, not clickable `<div>`s — so no roving-tabindex or custom
- * key handling is needed beyond the dialog-level trap.
  */
 export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
   onSubmit,
   onCancel,
 }) => {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const contractNameInputRef = useRef<HTMLInputElement>(null);
   const [contractName, setContractName] = useState('');
   const [totalValue, setTotalValue] = useState('');
   const [currency, setCurrency] = useState('USD');
@@ -224,17 +211,8 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     return errors.find(e => e.fieldId === fieldId)?.message;
   };
 
-  useDialogFocusTrap({
-    isOpen: true,
-    dialogRef,
-    initialFocusRef: contractNameInputRef,
-    onEscape: onCancel,
-    restoreFocus: true,
-  });
-
   return (
     <div
-      ref={dialogRef}
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
       role="dialog"
       aria-labelledby="create-contract-title"
@@ -255,7 +233,6 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
             required
           >
             <input
-              ref={contractNameInputRef}
               type="text"
               value={contractName}
               onChange={e => setContractName(e.target.value)}

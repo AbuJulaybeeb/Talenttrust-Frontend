@@ -9,8 +9,9 @@ import { usePreferences } from '@/lib/preferences';
  * - Reads `preferences.theme` via `usePreferences()`.
  * - Toggles between `'light'` and `'dark'` (treats `'system'` as dark for
  *   the first click so the user gets an explicit state immediately).
- * - Renders a loading skeleton before hydration to avoid layout shift while
- *   the resolved theme state is still settling on the client.
+ * - Renders `null` before hydration to prevent SSR mismatch (the
+ *   `PreferencesProvider` already guards `isHydrated`, so on the first
+ *   client render `preferences.theme` is the resolved stored value).
  */
 export function ThemeToggle() {
   const { preferences, updatePreference } = usePreferences();
@@ -20,17 +21,7 @@ export function ThemeToggle() {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return (
-      <button
-        type="button"
-        disabled
-        aria-hidden="true"
-        aria-busy="true"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-200 animate-pulse dark:bg-slate-700"
-      />
-    );
-  }
+  if (!mounted) return null;
 
   const isDark = preferences.theme === 'dark';
   const next = isDark ? 'light' : 'dark';

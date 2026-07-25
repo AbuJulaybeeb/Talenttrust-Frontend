@@ -39,11 +39,11 @@ function MockComponent() {
   );
 }
 
-const renderWithProviders = (ui: React.ReactElement, idleTimeout?: number, initialBalance?: number) => {
+const renderWithProviders = (ui: React.ReactElement, idleTimeout?: number) => {
   return render(
     <PreferencesProvider>
       <ToastProvider>
-        <WalletProvider idleTimeout={idleTimeout} initialBalance={initialBalance}>
+        <WalletProvider idleTimeout={idleTimeout}>
           {ui}
         </WalletProvider>
       </ToastProvider>
@@ -457,7 +457,7 @@ describe('useWallet() outside provider', () => {
 // WalletContextType field presence
 // ---------------------------------------------------------------------------
 describe('WalletContextType field presence', () => {
-  it('exposes all documented fields: address, isConnecting, error, balance, connect, disconnect, performWalletAction', () => {
+  it('exposes all documented fields: address, isConnecting, error, connect, disconnect', () => {
     let ctx: ReturnType<typeof useWallet> | undefined;
 
     function Capture() {
@@ -479,14 +479,10 @@ describe('WalletContextType field presence', () => {
     expect(ctx).toHaveProperty('address');
     expect(ctx).toHaveProperty('isConnecting');
     expect(ctx).toHaveProperty('error');
-    expect(ctx).toHaveProperty('balance');
     expect(ctx).toHaveProperty('connect');
     expect(ctx).toHaveProperty('disconnect');
-    expect(ctx).toHaveProperty('performWalletAction');
     expect(typeof ctx!.connect).toBe('function');
     expect(typeof ctx!.disconnect).toBe('function');
-    expect(typeof ctx!.balance).toBe('number');
-    expect(typeof ctx!.performWalletAction).toBe('function');
   });
 });
 
@@ -593,147 +589,5 @@ describe('WalletContext – error toast surfacing', () => {
 
     // Inline error must be set by the catch block in connect()
     expect(screen.getByTestId('inline-error').textContent).toBe('Failed to connect wallet');
-  });
-});
-
-describe('Optimistic Updates', () => {
-  const { WalletProvider: ActualWalletProvider, useWallet: ActualUseWallet } =
-    jest.requireActual('../WalletContext');
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('applies optimistic updates and commits on success', async () => {
-    let resolveApi!: (val: number) => void;
-    const apiCall = () => new Promise<number>((resolve) => { resolveApi = resolve; });
-
-    function Consumer() {
-      const { balance, performWalletAction } = ActualUseWallet();
-      return (
-        <div>
-          <span data-testid="balance">{balance}</span>
-          <button onClick={() => performWalletAction(100, apiCall)}>Add 100</button>
-        </div>
-      );
-    }
-
-    render(
-      <PreferencesProvider>
-        <ToastProvider>
-          <ActualWalletProvider idleTimeout={0} initialBalance={0}>
-            <Consumer />
-          </ActualWalletProvider>
-        </ToastProvider>
-      </PreferencesProvider>
-    );
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('0');
-
-    act(() => { screen.getByText('Add 100').click(); });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('100');
-
-    await act(async () => {
-      resolveApi(100);
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('100');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('rolls back and shows error toast on failure', async () => {
-    let rejectApi!: (err: Error) => void;
-    const apiCall = () => new Promise<number>((_, reject) => { rejectApi = reject; });
-
-    function Consumer() {
-      const { balance, performWalletAction } = ActualUseWallet();
-      return (
-        <div>
-          <span data-testid="balance">{balance}</span>
-          <button onClick={() => performWalletAction(-50, apiCall)}>Spend 50</button>
-        </div>
-      );
-    }
-
-    render(
-      <PreferencesProvider>
-        <ToastProvider>
-          <ActualWalletProvider idleTimeout={0} initialBalance={100}>
-            <Consumer />
-          </ActualWalletProvider>
-        </ToastProvider>
-      </PreferencesProvider>
-    );
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('100');
-
-    act(() => { screen.getByText('Spend 50').click(); });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('50');
-
-    await act(async () => {
-      rejectApi(new Error('Failed Action'));
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('100');
-    expect(screen.getByText('Wallet action failed. Reverting changes.')).toBeInTheDocument();
-  });
-
-  it('handles concurrent actions consistently', async () => {
-    let resolveApi1!: (val: number) => void;
-    let rejectApi2!: (err: Error) => void;
-    const apiCall1 = () => new Promise<number>((resolve) => { resolveApi1 = resolve; });
-    const apiCall2 = () => new Promise<number>((_, reject) => { rejectApi2 = reject; });
-
-    function Consumer() {
-      const { balance, performWalletAction } = ActualUseWallet();
-      return (
-        <div>
-          <span data-testid="balance">{balance}</span>
-          <button onClick={() => performWalletAction(50, apiCall1)}>Add 50</button>
-          <button onClick={() => performWalletAction(30, apiCall2)}>Add 30</button>
-        </div>
-      );
-    }
-
-    render(
-      <PreferencesProvider>
-        <ToastProvider>
-          <ActualWalletProvider idleTimeout={0} initialBalance={0}>
-            <Consumer />
-          </ActualWalletProvider>
-        </ToastProvider>
-      </PreferencesProvider>
-    );
-
-    act(() => { 
-      screen.getByText('Add 50').click(); 
-      screen.getByText('Add 30').click(); 
-    });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('80');
-
-    await act(async () => {
-      resolveApi1(50);
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('80');
-
-    await act(async () => {
-      rejectApi2(new Error('Failed Second Call'));
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId('balance')).toHaveTextContent('50');
-    expect(screen.getByText('Wallet action failed. Reverting changes.')).toBeInTheDocument();
   });
 });
