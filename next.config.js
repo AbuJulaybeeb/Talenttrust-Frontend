@@ -3,37 +3,50 @@
 /*
   Content-Security-Policy
   ------------------------------------------------------------------
-  Scoped to what the app actually loads today (no external CDNs, no
-  analytics, wallet is mocked).  See docs/security-headers.md for the
-  rationale behind each directive, the unavoidable `unsafe-inline` on
-  styles, and a concrete path to tighten the policy later.
+  Environment-aware CSP that provides strict security in production
+  while preserving developer experience in development.
+
+  Development vs Production:
+    - script-src: adds 'unsafe-eval' in dev for Next.js Fast Refresh/HMR
+    - style-src: adds 'unsafe-inline' in dev for Tailwind JIT compiler
+    - All other directives remain consistent across environments
+
+  See docs/security-headers.md for complete rationale and future roadmap.
 
   Quick reference for future wallet integration:
     connect-src additions: https://*.infura.io wss://*.infura.io (MetaMask RPC)
                            wss://relay.walletconnect.com          (WalletConnect relay)
     script-src may also need the provider's injection origin.
 */
+
 // Build CSP directives conditionally based on environment
 const cspDirectives = ["default-src 'self'"];
+
 if (process.env.NODE_ENV === 'development') {
-  // Development: allow unsafe-eval for Fast Refresh and unsafe-inline for Tailwind styles
+  // Development-only: 'unsafe-eval' enables Next.js Fast Refresh and HMR
   cspDirectives.push("script-src 'self' 'unsafe-eval'");
+  // Development-only: 'unsafe-inline' enables Tailwind JIT inline style injection
   cspDirectives.push("style-src 'self' 'unsafe-inline'");
 } else {
-  // Production: tighten CSP
+  // Production: strict CSP without unsafe directives
+  // All scripts are bundled to _next/static/ (no eval needed)
   cspDirectives.push("script-src 'self'");
+  // All styles are extracted to static CSS files (no inline styles needed)
   cspDirectives.push("style-src 'self'");
 }
+
+// Environment-consistent directives
 cspDirectives.push(
-  "img-src 'self' data:'",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "frame-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'"
+  "img-src 'self' data:'",       // Allow self-hosted images and inline data: URIs (SVGs, etc.)
+  "font-src 'self'",              // All fonts are self-hosted
+  "connect-src 'self'",           // API calls restricted to same origin (extend for wallet providers later)
+  "frame-src 'self'",             // No cross-origin iframes
+  "object-src 'none'",            // Block plugins (<object>, <embed>, <applet>)
+  "base-uri 'self'",              // Prevent <base> tag injection attacks
+  "form-action 'self'",           // Prevent form hijacking to external endpoints
+  "frame-ancestors 'none'"        // Prevent clickjacking (also enforced by X-Frame-Options)
 );
+
 const cspHeader = cspDirectives.join('; ');
 
 const nextConfig = {

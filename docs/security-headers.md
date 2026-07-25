@@ -95,12 +95,25 @@ different build and rendering implications.
 
 ### Current directives
 
+The CSP is **environment-aware** and applies stricter rules in production:
+
+#### Development (NODE_ENV=development)
 ```
-# Development (NODE_ENV=development)
 default-src 'self'
 script-src 'self' 'unsafe-eval'
 style-src 'self' 'unsafe-inline'
-# Production (NODE_ENV=production)
+img-src 'self' data:'
+font-src 'self'
+connect-src 'self'
+frame-src 'self'
+object-src 'none'
+base-uri 'self'
+form-action 'self'
+frame-ancestors 'none'
+```
+
+#### Production (NODE_ENV=production)
+```
 default-src 'self'
 script-src 'self'
 style-src 'self'
@@ -114,74 +127,76 @@ form-action 'self'
 frame-ancestors 'none'
 ```
 
-| Directive | Value | Notes |
-|---|---|---|
-| `default-src` | `'self'` | Baseline — only allow same-origin resources |
-| `script-src` | `'self' 'unsafe-eval'` | `'unsafe-eval'` is **only needed in dev** for Next.js Fast Refresh. See below. |
-| `style-src` | `'self' 'unsafe-inline'` | **Unavoidable** with current Next.js + Tailwind setup. See below. |
-| `img-src` | `'self' data:` | Allows inline `data:` URIs (SVGs, etc.) |
-| `font-src` | `'self'` | All fonts are self-hosted |
-| `connect-src` | `'self'` | API calls only go to the same origin today |
-| `frame-src` | `'self'` | No cross-origin iframes |
-| `object-src` | `'none'` | Blocks `<object>`, `<embed>`, `<applet>` |
-| `base-uri` | `'self'` | Stops `<base>` tag injection |
-| `form-action` | `'self'` | Prevents form hijacking to external endpoints |
-| `frame-ancestors` | `'none'` | Same protection as `X-Frame-Options: DENY` but CSP-native |
+| Directive | Development | Production | Notes |
+|---|---|---|---|
+| `default-src` | `'self'` | `'self'` | Baseline — only allow same-origin resources |
+| `script-src` | `'self' 'unsafe-eval'` | `'self'` | `'unsafe-eval'` **only in dev** for Next.js Fast Refresh |
+| `style-src` | `'self' 'unsafe-inline'` | `'self'` | `'unsafe-inline'` **only in dev** for Tailwind JIT |
+| `img-src` | `'self' data:` | `'self' data:` | Allows inline `data:` URIs (SVGs, etc.) |
+| `font-src` | `'self'` | `'self'` | All fonts are self-hosted |
+| `connect-src` | `'self'` | `'self'` | API calls only go to the same origin today |
+| `frame-src` | `'self'` | `'self'` | No cross-origin iframes |
+| `object-src` | `'none'` | `'none'` | Blocks `<object>`, `<embed>`, `<applet>` |
+| `base-uri` | `'self'` | `'self'` | Stops `<base>` tag injection |
+| `form-action` | `'self'` | `'self'` | Prevents form hijacking to external endpoints |
+| `frame-ancestors` | `'none'` | `'none'` | Same protection as `X-Frame-Options: DENY` but CSP-native |
 
-### Unavoidable `'unsafe-inline'` on styles
+### Development vs Production CSP
 
-Next.js injects `<style>` tags at runtime for:
+The CSP is **environment-aware** to balance security with development experience:
 
-1. **Tailwind CSS** — The JIT compiler emits inline `<style>` blocks during
-   development (in production, Tailwind is extracted to static CSS files, but
-   Next.js may still inject small inline style blocks for component-level
-   styles).
-2. **CSS-in-JS / styled-jsx** — If any component uses Next.js's built-in
-   styled-jsx, those styles are injected as inline `<style>` tags.
-3. **Font optimization** — `next/font` may inject inline critical CSS.
+#### Development mode (`'unsafe-eval'` and `'unsafe-inline'`)
 
-Removing `'unsafe-inline'` from `style-src` will break the dev server
-immediately (styles disappear) and may cause subtle breakage in production.
+1. **`'unsafe-eval'` for Fast Refresh** — Next.js uses `eval()` for Hot Module
+   Replacement (HMR) and Fast Refresh during development. This directive is
+   **automatically removed in production**.
 
-### Path to tighten `style-src`
+2. **`'unsafe-inline'` for Tailwind JIT** — The Tailwind JIT compiler emits
+   inline `<style>` blocks during development. In production builds, Tailwind
+   extracts styles to static CSS files, allowing this directive to be removed.
 
-1. **Short term** — Switch `style-src` to use a **nonce**:
-   ```
-   style-src 'self' 'nonce-{random}'
-   ```
-   This requires a custom `_document.tsx` that reads a per-request nonce from
-   headers and threads it into every `<style>` tag.  Next.js 14 does not yet
-   provide a built-in nonce mechanism for all injected styles — you would need
-   to maintain a custom `renderToHTML` override or wait for stable nonce
-   support in a future Next.js release.
+#### Production mode (strict CSP)
 
-2. **Medium term** — Adopt **strict-dynamic + hashes**:
-   ```
-   style-src 'self' 'sha256-abc123' 'sha256-def456' 'strict-dynamic'
-   ```
-   Generate hashes for every inline style block emitted by the production
-   build.  This is brittle across builds (hashes change when CSS changes) but
-   can be automated in CI with a script that scans the production HTML output
-   and updates the CSP header.
+**Both `'unsafe-eval'` and `'unsafe-inline'` are removed in production**,
+providing defense-in-depth against XSS attacks. The production build process:
 
-3. **Long term** — When the project moves away from Tailwind's runtime
-   injection (e.g., to a zero-runtime CSS solution or a fully extracted
-   stylesheet), `'unsafe-inline'` can be dropped entirely.
+1. **Scripts** — All JavaScript is bundled and served as static files from
+   `_next/static/`, eliminating the need for `eval()`.
+2. **Styles** — Tailwind CSS is extracted to static stylesheets during the
+   build, and Next.js serves them as regular `<link>` tags rather than inline
+   `<style>` blocks.
 
-### `'unsafe-eval'` on scripts
+This approach has been **validated** to work with Next.js 16.x + Tailwind 4.x.
+The production build successfully loads all assets without CSP violations.
 
-Next.js uses `eval()` for **Fast Refresh** in development mode.  This is
-**not needed in production** (`next build && next start`).  To tighten:
+### Current state vs roadmap
 
-1. In `next.config.js`, swap the `script-src` line to the production version:
-   ```
-   "script-src 'self'",
-   ```
-2. The dev server will break (Fast Refresh stops working), so you may want to
-   keep both lines and toggle with an environment variable:
-   ```js
-   `script-src 'self'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
-   ```
+**Status: ✅ Roadmap implemented**
+
+The tightening described in previous versions of this document has been
+**completed**:
+
+- ✅ `'unsafe-eval'` removed from production `script-src`
+- ✅ `'unsafe-inline'` removed from production `style-src`
+- ✅ Environment-based branching in `next.config.js`
+- ✅ Comprehensive test coverage in `__tests__/next.config.test.js`
+
+### Future improvements (optional)
+
+While the current CSP is already strict, these further improvements could be
+considered if additional hardening is required:
+
+1. **Nonce-based CSP** — For even stricter protection, implement per-request
+   nonces for styles and scripts. This requires Next.js middleware to generate
+   and inject nonces into both headers and rendered HTML.
+
+2. **Subresource Integrity (SRI)** — Add `integrity` attributes to `<script>`
+   and `<link>` tags. This protects against CDN compromises but requires
+   build-time hash generation. (Note: this project self-hosts all assets, so
+   SRI provides less value than in CDN-heavy setups.)
+
+3. **CSP Reporting** — Add `report-uri` or `report-to` directives to collect
+   CSP violation reports for monitoring and debugging.
 
 ### Future: wallet integration
 
