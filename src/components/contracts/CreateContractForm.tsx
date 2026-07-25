@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { FormField } from '@/components/FormField';
 import { ErrorSummary } from '@/components/ErrorSummary';
-import Card from '@/components/Card';
 import { useToast } from '@/components/toast/toast-provider';
 import { saveContract } from '@/lib/repository';
 import { normalizeStellarAddress } from '@/lib/stellarAddress';
@@ -99,20 +98,20 @@ const CreateContractForm: React.FC<CreateContractFormProps> = ({ onSuccess, onCa
     'w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
   return (
-    <section aria-labelledby="create-contract-heading">
-      <Card
-        header={
-          <h2
-            id="create-contract-heading"
-            className="text-xl font-semibold text-slate-900"
-          >
-            Create a new contract
-          </h2>
-        }
+    <section
+      aria-labelledby="create-contract-heading"
+      className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+    >
+      <h2
+        id="create-contract-heading"
+        className="text-xl font-semibold text-slate-900 mb-6"
       >
-        <ErrorSummary errors={errors} />
+        Create a new contract
+      </h2>
 
-        <form onSubmit={handleSubmit} noValidate>
+      <ErrorSummary errors={errors} />
+
+      <form onSubmit={handleSubmit} noValidate>
         <FormField
           id="contractName"
           label="Contract name"
@@ -198,7 +197,6 @@ const CreateContractForm: React.FC<CreateContractFormProps> = ({ onSuccess, onCa
           </button>
         </div>
       </form>
-      </Card>
     </section>
   );
 };

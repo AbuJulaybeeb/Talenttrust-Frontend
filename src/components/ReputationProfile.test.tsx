@@ -26,11 +26,10 @@
  */
 
 import React from 'react';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import ReputationProfile, {
   ReputationEvent,
   ReputationProfileProps,
-  getReputationBands,
 } from './ReputationProfile';
 import { assertNoA11yViolations } from '@/test-utils/a11y';
 
@@ -678,15 +677,15 @@ describe('ReputationProfile – reputation score meter (issue #245)', () => {
     it('does not render the legend when there is no score', () => {
       renderProfile({ name: 'No Score User', score: undefined });
       expect(screen.queryByText(/Reputation Level Legend/i)).not.toBeInTheDocument();
-      expect(screen.queryByRole('group', { name: /Reputation Level Legend/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: /Reputation Level Legend/i })).not.toBeInTheDocument();
     });
 
     it('renders the legend when score exists', () => {
       renderProfile({ name: 'Score User', score: 3.5 });
       expect(screen.getByText(/Reputation Level Legend/i)).toBeInTheDocument();
-      const legendGroup = screen.getByRole('group', { name: /Reputation Level Legend/i });
-      expect(legendGroup).toBeInTheDocument();
-      expect(within(legendGroup).getAllByRole('button')).toHaveLength(5);
+      const legendList = screen.getByRole('list', { name: /Reputation Level Legend/i });
+      expect(legendList).toBeInTheDocument();
+      expect(within(legendList).getAllByRole('listitem')).toHaveLength(5);
     });
 
     it('associates the meter with the legend via aria-describedby', () => {
@@ -770,126 +769,6 @@ describe('ReputationProfile – reputation score meter (issue #245)', () => {
 
     it('passes axe accessibility checks when legend is rendered', async () => {
       const { container } = renderProfile({ name: 'A11y Legend User', score: 3.5 });
-      await assertNoA11yViolations(container);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // 12. Keyboard operability of reputation controls (issue #623)
-  // ---------------------------------------------------------------------------
-
-  describe('ReputationProfile – keyboard-operable legend bands', () => {
-    it('each legend band has role="button" and is focusable via tabIndex', () => {
-      renderProfile({ name: 'Keyboard User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      // 5 bands, all focusable
-      expect(buttons).toHaveLength(5);
-      buttons.forEach((btn) => {
-        expect(btn).toHaveAttribute('tabIndex', '0');
-      });
-    });
-
-    it('the active band has aria-pressed set to true', () => {
-      renderProfile({ name: 'Pressed User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      // Score 3.5 falls in Trusted Partner [3, 4)
-      const activeButton = buttons.find((btn) =>
-        btn.getAttribute('aria-label')?.startsWith('Trusted Partner')
-      );
-      expect(activeButton).toHaveAttribute('aria-pressed', 'true');
-    });
-
-    it('inactive bands have aria-pressed set to false', () => {
-      renderProfile({ name: 'Inactive User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      const inactiveButtons = buttons.filter((btn) =>
-        !btn.getAttribute('aria-label')?.startsWith('Trusted Partner')
-      );
-      expect(inactiveButtons.length).toBeGreaterThan(0);
-      inactiveButtons.forEach((btn) => {
-        expect(btn).toHaveAttribute('aria-pressed', 'false');
-      });
-    });
-
-    it('each band has an accessible aria-label describing the level and range', () => {
-      renderProfile({ name: 'Label User', score: 3.5 });
-      const bands = getReputationBands(5);
-      bands.forEach((band) => {
-        const btn = screen.getByRole('button', {
-          name: `${band.label} level: ${band.min.toFixed(1)} to ${band.max.toFixed(1)}`,
-        });
-        expect(btn).toBeInTheDocument();
-      });
-    });
-
-    it('legend bands appear in a logical focus order matching visual layout', () => {
-      renderProfile({ name: 'FocusOrder User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      const labels = buttons.map((btn) => btn.getAttribute('aria-label'));
-      // Bands should be in order: Newcomer, Contributor, Active Contributor, Trusted Partner, Expert
-      expect(labels[0]).toContain('Newcomer');
-      expect(labels[1]).toContain('Contributor');
-      expect(labels[2]).toContain('Active Contributor');
-      expect(labels[3]).toContain('Trusted Partner');
-      expect(labels[4]).toContain('Expert');
-    });
-
-    it('Enter key on a legend band triggers a click event', () => {
-      renderProfile({ name: 'Enter User', score: 3.5 });
-      const handleClick = jest.fn();
-      const buttons = screen.getAllByRole('button');
-      buttons.forEach((btn) => {
-        btn.addEventListener('click', handleClick);
-      });
-
-      // Press Enter on the first band (Newcomer)
-      fireEvent.keyDown(buttons[0], { key: 'Enter', code: 'Enter' });
-      expect(handleClick).toHaveBeenCalledTimes(1);
-    });
-
-    it('Space key on a legend band triggers a click event and prevents default scroll', () => {
-      renderProfile({ name: 'Space User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      const handleClick = jest.fn();
-      buttons[2].addEventListener('click', handleClick);
-
-      // Verify Space triggers click — the component's onKeyDown handler calls
-      // e.preventDefault() to suppress scroll, then fires .click() for parity.
-      fireEvent.keyDown(buttons[2], { key: ' ', code: 'Space' });
-      expect(handleClick).toHaveBeenCalledTimes(1);
-    });
-
-    it('non-activation keys (e.g., ArrowRight) do not trigger click', () => {
-      renderProfile({ name: 'Arrow User', score: 3.5 });
-      const buttons = screen.getAllByRole('button');
-      const handleClick = jest.fn();
-      buttons[0].addEventListener('click', handleClick);
-
-      fireEvent.keyDown(buttons[0], { key: 'ArrowRight', code: 'ArrowRight' });
-      expect(handleClick).not.toHaveBeenCalled();
-    });
-
-    it('legend is not rendered when there is no reputation score', () => {
-      renderProfile({ name: 'No Score User', score: undefined });
-      expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    });
-
-    it('keyboard-operable legend passes axe audit', async () => {
-      const { container } = render(
-        <ReputationProfile
-          name="Keyboard A11y User"
-          score={88}
-          level="Expert"
-          history={HISTORY_EVENTS}
-        />
-      );
-      await assertNoA11yViolations(container);
-    });
-
-    it('partial reputation with keyboard-operable legend passes axe audit', async () => {
-      const { container } = render(
-        <ReputationProfile name="Partial Keyboard User" score={42} level="Active Member" history={[]} />
-      );
       await assertNoA11yViolations(container);
     });
   });

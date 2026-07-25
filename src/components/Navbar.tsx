@@ -3,7 +3,16 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useNavigation } from '@/hooks/useNavigation';
+
+/**
+ * Navigation route definitions for the primary global nav.
+ * @internal
+ */
+const NAV_ROUTES = [
+  { href: '/contracts', label: 'Contracts' },
+  { href: '/milestones', label: 'Milestones' },
+  { href: '/reputation', label: 'Reputation' },
+] as const;
 
 /**
  * Navbar — accessible primary navigation for the TalentTrust application.
@@ -31,41 +40,11 @@ import { useNavigation } from '@/hooks/useNavigation';
  */
 export default function Navbar(): React.JSX.Element {
   const pathname = usePathname();
-  const { routes, isLoading, error } = useNavigation();
-
-  if (error) {
-    return (
-      <nav aria-label="Primary">
-        <div className="flex h-9 items-center rounded-lg bg-red-50 px-3 text-sm font-medium text-red-600 ring-1 ring-inset ring-red-200">
-          Navigation unavailable
-        </div>
-      </nav>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <nav aria-label="Primary" aria-busy="true">
-        <ul className="flex flex-wrap items-center gap-1 sm:gap-2" aria-hidden="true">
-          {routes.map(({ href, label }) => (
-            <li key={href}>
-              <div
-                className="rounded-lg px-3 py-2 text-sm font-medium bg-slate-200 text-transparent animate-shimmer motion-reduce:animate-none select-none"
-              >
-                {label}
-              </div>
-            </li>
-          ))}
-        </ul>
-        <span className="sr-only" role="status" aria-live="polite">Loading navigation...</span>
-      </nav>
-    );
-  }
 
   return (
     <nav aria-label="Primary">
       <ul className="flex flex-wrap items-center gap-1 sm:gap-2">
-        {routes.map(({ href, label }) => {
+        {NAV_ROUTES.map(({ href, label }) => {
           const isActive = pathname === href;
 
           return (
