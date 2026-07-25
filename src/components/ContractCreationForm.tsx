@@ -47,6 +47,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     { label: '', address: '' },
   ]);
   const [errors, setErrors] = useState<Array<{ fieldId: string; message: string }>>([]);
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
 
   /**
    * Validates the form data and returns an array of error objects.
@@ -141,6 +142,31 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
     return validationErrors;
   }, [contractName, totalValue, currency, parties]);
 
+  const validateAndSetErrors = useCallback(
+    (fieldId?: string) => {
+      const validationErrors = validateForm();
+      setErrors(validationErrors);
+
+      if (fieldId) {
+        setTouchedFields(prev => ({ ...prev, [fieldId]: true }));
+      }
+    },
+    [validateForm]
+  );
+
+  const markAllFieldsTouched = useCallback(() => {
+    const nextTouchedFields = {
+      contractName: true,
+      totalValue: true,
+      currency: true,
+      parties: true,
+      ...Object.fromEntries(parties.map((_, index) => [`party-label-${index}`, true])),
+      ...Object.fromEntries(parties.map((_, index) => [`party-address-${index}`, true])),
+    };
+
+    setTouchedFields(nextTouchedFields);
+  }, [parties]);
+
   /**
    * Handles form submission, validates input, and calls onSubmit if valid.
    */
@@ -149,6 +175,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
       e.preventDefault();
 
       const validationErrors = validateForm();
+      markAllFieldsTouched();
       setErrors(validationErrors);
 
       if (validationErrors.length > 0) {
@@ -179,7 +206,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
 
       onSubmit(contract);
     },
-    [contractName, totalValue, currency, parties, validateForm, onSubmit]
+    [contractName, totalValue, currency, parties, validateForm, markAllFieldsTouched, onSubmit]
   );
 
   /**
@@ -208,6 +235,10 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
   }, []);
 
   const getFieldError = (fieldId: string): string | undefined => {
+    if (!touchedFields[fieldId] && errors.length === 0) {
+      return undefined;
+    }
+
     return errors.find(e => e.fieldId === fieldId)?.message;
   };
 
@@ -236,6 +267,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
               type="text"
               value={contractName}
               onChange={e => setContractName(e.target.value)}
+              onBlur={() => validateAndSetErrors('contractName')}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Website Redesign Project"
             />
@@ -252,6 +284,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                 type="text"
                 value={totalValue}
                 onChange={e => setTotalValue(e.target.value)}
+                onBlur={() => validateAndSetErrors('totalValue')}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., 5000"
               />
@@ -266,6 +299,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
               <select
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
+                onBlur={() => validateAndSetErrors('currency')}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="USD">USD</option>
@@ -312,6 +346,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                       type="text"
                       value={party.label}
                       onChange={e => updateParty(index, 'label', e.target.value)}
+                      onBlur={() => validateAndSetErrors(`party-label-${index}`)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="e.g., Client, Freelancer"
                     />
@@ -328,6 +363,7 @@ export const ContractCreationForm: React.FC<ContractCreationFormProps> = ({
                       type="text"
                       value={party.address}
                       onChange={e => updateParty(index, 'address', e.target.value)}
+                      onBlur={() => validateAndSetErrors(`party-address-${index}`)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                     />

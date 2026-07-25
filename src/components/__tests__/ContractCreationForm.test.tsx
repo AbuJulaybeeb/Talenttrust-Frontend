@@ -389,6 +389,20 @@ describe('ContractCreationForm', () => {
       });
     });
 
+    it('shows inline validation feedback and aria-describedby after a field is blurred', async () => {
+      render(<ContractCreationForm {...defaultProps} />);
+
+      const contractNameInput = screen.getByLabelText(/contract name/i);
+      fireEvent.blur(contractNameInput);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/contract name is required/i)[0]).toBeInTheDocument();
+      });
+
+      expect(contractNameInput).toHaveAttribute('aria-invalid', 'true');
+      expect(contractNameInput).toHaveAttribute('aria-describedby', 'contractName-error');
+    });
+
     it('links error messages to form fields via IDs', async () => {
       render(<ContractCreationForm {...defaultProps} />);
 
