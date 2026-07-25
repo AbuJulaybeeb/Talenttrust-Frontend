@@ -442,7 +442,7 @@ describe('ContractsPage', () => {
     it('opens contract creation form with keyboard Enter on the action button', async () => {
       const user = userEvent.setup();
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
       const createButton = screen.getByRole('button', { name: /create contract/i });
       createButton.focus();
@@ -687,12 +687,82 @@ describe('ContractStatusFilter integration', () => {
 
   it('filter does not appear while the creation form is open', () => {
     mockListContracts.mockReturnValue(MIXED_CONTRACTS);
-    render(<ContractsPage />);
+    renderWithProviders(<ContractsPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
 
     expect(
       screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
     ).not.toBeInTheDocument();
+  });
+
+  describe('Contract count summary', () => {
+    it('shows total count when "All" filter is selected', () => {
+      renderWithProviders(<ContractsPage />);
+
+      expect(screen.getByText('Showing 5 of 5 contracts')).toBeInTheDocument();
+    });
+
+    it('shows filtered count when a specific status is selected', () => {
+      renderWithProviders(<ContractsPage />);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+
+      expect(screen.getByText('Showing 2 of 5 active contracts')).toBeInTheDocument();
+    });
+
+    it('updates count when filter changes', () => {
+      renderWithProviders(<ContractsPage />);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+      expect(screen.getByText('Showing 2 of 5 active contracts')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+      expect(screen.getByText('Showing 1 of 5 completed contracts')).toBeInTheDocument();
+    });
+
+    it('shows zero matches count when no contracts match the filter', () => {
+      renderWithProviders(<ContractsPage />);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Paid' }));
+
+      expect(screen.getByText('Showing 0 of 5 paid contracts')).toBeInTheDocument();
+    });
+
+    it('count summary has aria-live polite for accessibility', () => {
+      renderWithProviders(<ContractsPage />);
+
+      const summary = screen.getByText('Showing 5 of 5 contracts');
+      expect(summary).toHaveAttribute('aria-live', 'polite');
+      expect(summary).toHaveAttribute('aria-atomic', 'true');
+    });
+
+    it('updates count summary when search term filters contracts', () => {
+      renderWithProviders(<ContractsPage />);
+
+      const searchInput = screen.getByPlaceholderText('Search contracts...');
+      fireEvent.change(searchInput, { target: { value: 'Alpha' } });
+
+      expect(screen.getByText('Showing 1 of 5 contracts')).toBeInTheDocument();
+    });
+
+    it('count summary reflects all contracts when search is cleared', () => {
+      renderWithProviders(<ContractsPage />);
+
+      const searchInput = screen.getByPlaceholderText('Search contracts...');
+      fireEvent.change(searchInput, { target: { value: 'Alpha' } });
+      expect(screen.getByText('Showing 1 of 5 contracts')).toBeInTheDocument();
+
+      fireEvent.change(searchInput, { target: { value: '' } });
+      expect(screen.getByText('Showing 5 of 5 contracts')).toBeInTheDocument();
+    });
+
+    it('count summary handles singular correctly for one contract', () => {
+      const singleContract = [MIXED_CONTRACTS[0]];
+      mockListContracts.mockReturnValue(singleContract);
+      renderWithProviders(<ContractsPage />);
+
+      expect(screen.getByText('Showing 1 of 1 contract')).toBeInTheDocument();
+    });
   });
 });

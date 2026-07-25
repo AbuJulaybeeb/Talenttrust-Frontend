@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import EmptyState from '../../components/EmptyState';
 import { ContractCreationForm } from '../../components/ContractCreationForm';
 import ContractStatusFilter, {
@@ -9,20 +9,36 @@ import ContractStatusFilter, {
 import { listContracts, saveContract } from '@/lib/repository';
 import type { Contract } from '@/types/domain';
 
-const PAGE_SIZE = 5;
-
 const ContractsPage: React.FC = () => {
   // Initialise from localStorage on first render; subsequent saves trigger
   // a state update so the list reflects newly added items immediately.
   const [contracts, setContracts] = useState<Contract[]>(() => listContracts());
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ContractStatusValue>('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  /** Client-side filtered contracts derived from the active status filter. */
+  /** Client-side filtered contracts derived from the active status filter and search term. */
   const filteredContracts = useMemo(() => {
-    if (statusFilter === 'All') return contracts;
-    return contracts.filter((c) => c.status === statusFilter);
-  }, [contracts, statusFilter]);
+    let result = contracts;
+    if (statusFilter !== 'All') {
+      result = result.filter((c) => c.status === statusFilter);
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.contractName.toLowerCase().includes(term) ||
+          c.status.toLowerCase().includes(term),
+      );
+    }
+    return result;
+  }, [contracts, statusFilter, searchTerm]);
+
+  const countSummary =
+    statusFilter === 'All'
+      ? `Showing ${filteredContracts.length} of ${contracts.length} contract${contracts.length !== 1 ? 's' : ''}`
+      : `Showing ${filteredContracts.length} of ${contracts.length} ${statusFilter.toLowerCase()} contract${contracts.length !== 1 ? 's' : ''}`;
 
   /**
    * Opens the contract creation form modal.
@@ -47,15 +63,6 @@ const ContractsPage: React.FC = () => {
   const handleCancelForm = useCallback(() => {
     setShowForm(false);
   }, []);
-
-  /**
-   * Loads the next batch of contracts.
-   */
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredContracts.length));
-  }, [filteredContracts.length]);
-
-  const hasMore = visibleCount < filteredContracts.length;
 
   return (
     <main className="min-h-screen p-8">
@@ -111,6 +118,14 @@ const ContractsPage: React.FC = () => {
               Create Contract
             </button>
           </div>
+
+          <p
+            className="text-sm text-slate-600 mb-4"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {countSummary}
+          </p>
 
           <ContractStatusFilter
             selected={statusFilter}
