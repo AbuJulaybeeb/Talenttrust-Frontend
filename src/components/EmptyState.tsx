@@ -1,3 +1,6 @@
+
+'use client';
+
 'use client';
 
 import React, { useId } from 'react';
@@ -112,5 +115,6 @@ const EmptyState: React.FC<EmptyStateProps> = ({
     </div>
   );
 };
+
 
 export default EmptyState;

@@ -557,8 +557,16 @@ describe('ContractsPage', () => {
 
     it('renders main landmark', () => {
       mockListContracts.mockReturnValue([]);
-      render(<ContractsPage />);
+      renderWithProviders(<ContractsPage />);
 
+      expect(screen.getByRole('main')).toBeInTheDocument();
+    });
+
+    it('opens contract creation form with keyboard Enter on the action button', async () => {
+      const user = userEvent.setup();
+      mockListContracts.mockReturnValue([]);
+      renderWithProviders(<ContractsPage />);
+      render(<ContractsPage />);
       expect(screen.getByRole('main')).toBeInTheDocument();
     });
   });
@@ -628,3 +636,247 @@ describe('ContractsPage', () => {
     expect(mockListContracts).toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Contract status filter integration
+// ---------------------------------------------------------------------------
+
+describe('ContractStatusFilter integration', () => {
+  const MIXED_CONTRACTS = [
+    {
+      contractName: 'Alpha Project',
+      parties: [],
+      totalValue: 1000,
+      currency: 'USD',
+      status: 'Active' as const,
+      createdAt: 'Jan 1, 2025',
+      milestoneCount: 1,
+    },
+    {
+      contractName: 'Beta Project',
+      parties: [],
+      totalValue: 2000,
+      currency: 'USD',
+      status: 'Completed' as const,
+      createdAt: 'Feb 1, 2025',
+      milestoneCount: 3,
+    },
+    {
+      contractName: 'Gamma Project',
+      parties: [],
+      totalValue: 3000,
+      currency: 'USD',
+      status: 'Pending' as const,
+      createdAt: 'Mar 1, 2025',
+      milestoneCount: 2,
+    },
+    {
+      contractName: 'Delta Project',
+      parties: [],
+      totalValue: 4000,
+      currency: 'USD',
+      status: 'Active' as const,
+      createdAt: 'Apr 1, 2025',
+      milestoneCount: 4,
+    },
+    {
+      contractName: 'Epsilon Project',
+      parties: [],
+      totalValue: 5000,
+      currency: 'USD',
+      status: 'Disputed' as const,
+      createdAt: 'May 1, 2025',
+      milestoneCount: 1,
+    },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockListContracts.mockReturnValue([...MIXED_CONTRACTS]);
+    mockIsValidStellarAddress.mockReturnValue(true);
+  });
+
+  it('renders the filter when contracts exist', () => {
+    render(<ContractsPage />);
+
+    expect(
+      screen.getByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not render the filter when there are no contracts', () => {
+    mockListContracts.mockReturnValue([]);
+    render(<ContractsPage />);
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('defaults to "All" and shows all contracts', () => {
+    render(<ContractsPage />);
+
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
+    expect(screen.getByText('Delta Project')).toBeInTheDocument();
+    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
+  });
+
+  it('filters to show only Active contracts', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+    expect(screen.getByText('Delta Project')).toBeInTheDocument();
+    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gamma Project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Epsilon Project')).not.toBeInTheDocument();
+  });
+
+  it('filters to show only Completed contracts', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
+
+  it('filters to show only Pending contracts', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Pending' }));
+
+    expect(screen.getByText('Gamma Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
+
+  it('filters to show only Disputed contracts', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Disputed' }));
+
+    expect(screen.getByText('Epsilon Project')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
+
+  it('shows empty message when no contracts match the filter', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Paid' }));
+
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+  });
+
+  it('switches back to showing all contracts when "All" is selected', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+    expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+  });
+
+  it('announces the filtered count to screen readers', () => {
+    render(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
+
+    expect(screen.getByText('Showing 2 active contracts')).toBeInTheDocument();
+  });
+
+  it('does not show filter or list in empty state', () => {
+    mockListContracts.mockReturnValue([]);
+    render(<ContractsPage />);
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('No contracts match the selected filter.')).not.toBeInTheDocument();
+  });
+
+  it('filter does not appear while the creation form is open', () => {
+    mockListContracts.mockReturnValue(MIXED_CONTRACTS);
+    renderWithProviders(<ContractsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /create contract/i }));
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter contracts by status' }),
+    ).not.toBeInTheDocument();
+  });
+});
+// Issue #506: drive status chips through the rendered Contracts page.
+describe('contract status chip behavior', () => {
+  const contracts = [
+    { contractName: 'Active Alpha', parties: [], totalValue: 1000, currency: 'USD', status: 'Active' as const, createdAt: 'Jan 1, 2025', milestoneCount: 1 },
+    { contractName: 'Pending Beta', parties: [], totalValue: 2000, currency: 'USD', status: 'Pending' as const, createdAt: 'Jan 2, 2025', milestoneCount: 1 },
+    { contractName: 'Completed Gamma', parties: [], totalValue: 3000, currency: 'USD', status: 'Completed' as const, createdAt: 'Jan 3, 2025', milestoneCount: 1 },
+    { contractName: 'Disputed Delta', parties: [], totalValue: 4000, currency: 'USD', status: 'Disputed' as const, createdAt: 'Jan 4, 2025', milestoneCount: 1 },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockListContracts.mockReturnValue(contracts);
+    mockIsValidStellarAddress.mockReturnValue(true);
+  });
+
+  it.each([
+    ['Active', 'Active Alpha'],
+    ['Pending', 'Pending Beta'],
+    ['Completed', 'Completed Gamma'],
+    ['Disputed', 'Disputed Delta'],
+  ] as const)('%s filters the list and exposes selected state', (status, visibleContract) => {
+    render(<ContractsPage />);
+
+    const chip = screen.getByRole('radio', { name: status });
+    fireEvent.click(chip);
+
+    expect(chip).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked();
+    contracts.forEach(({ contractName }) => {
+      if (contractName === visibleContract) {
+        expect(screen.getByText(contractName)).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText(contractName)).not.toBeInTheDocument();
+      }
+    });
+  });
+
+  it('shows a deterministic empty result for a status with no contracts', () => {
+    render(<ContractsPage />);
+
+    const paidChip = screen.getByRole('radio', { name: 'Paid' });
+    fireEvent.click(paidChip);
+
+    expect(paidChip).toBeChecked();
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+  });
+
+  it('combines status with search and All clears only the status filter', () => {
+    render(<ContractsPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search contracts' }), {
+      target: { value: 'alpha' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Pending' }));
+    expect(screen.getByText('No contracts match the selected filter.')).toBeInTheDocument();
+
+    const allChip = screen.getByRole('radio', { name: 'All' });
+    fireEvent.click(allChip);
+
+    expect(allChip).toBeChecked();
+    expect(screen.getByText('Active Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Pending Beta')).not.toBeInTheDocument();
+  });
+});
+});
+ 
