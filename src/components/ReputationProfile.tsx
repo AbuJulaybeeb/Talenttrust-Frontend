@@ -141,8 +141,9 @@ export default function ReputationProfile({
             <h2 className="text-sm font-semibold text-slate-900" id="reputation-legend-title">
               Reputation Level Legend
             </h2>
-            <ul
+            <div
               id="reputation-legend"
+              role="group"
               aria-labelledby="reputation-legend-title"
               className="mt-3 grid gap-3 sm:grid-cols-5 text-sm"
             >
@@ -151,9 +152,20 @@ export default function ReputationProfile({
                   band.max === maxScore ? score <= band.max : score < band.max
                 );
                 return (
-                  <li
+                  <div
                     key={band.label}
-                    className={`rounded-2xl border p-3 transition-colors ${
+                    tabIndex={0}
+                    role="button"
+                    aria-pressed={isActive}
+                    aria-label={`${band.label} level: ${band.min.toFixed(1)} to ${band.max.toFixed(1)}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        // Activate the band – keyboard parity with click
+                        (e.currentTarget as HTMLElement).click();
+                      }
+                    }}
+                    className={`rounded-2xl border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
                       isActive
                         ? 'border-indigo-200 bg-indigo-50/50 text-indigo-900 font-semibold'
                         : 'border-slate-200 bg-slate-50/50 text-slate-600'
@@ -163,10 +175,10 @@ export default function ReputationProfile({
                       {band.min.toFixed(1)} - {band.max.toFixed(1)}
                     </p>
                     <p className="mt-1 text-sm">{band.label}</p>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           </div>
         )}
 
