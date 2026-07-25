@@ -1003,32 +1003,32 @@ describe('Issue #528 – Keyboard Navigation and Semantic Structure', () => {
     });
 
     it('no interactive elements exist in empty state', () => {
-      const { container } = renderProfile({ name: 'No Interaction User', score: undefined, history: [] });
+      renderProfile({ name: 'No Interaction User', score: undefined, history: [] });
 
       // Verify no buttons, links, or form controls exist
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      expect(container.querySelector('input')).toBeNull();
-      expect(container.querySelector('select')).toBeNull();
-      expect(container.querySelector('textarea')).toBeNull();
+      expect(document.querySelector('input')).toBeNull();
+      expect(document.querySelector('select')).toBeNull();
+      expect(document.querySelector('textarea')).toBeNull();
     });
 
     it('no interactive elements exist in partial state', () => {
-      const { container } = renderProfile({ name: 'Partial No Interaction', score: 50, history: [] });
+      renderProfile({ name: 'Partial No Interaction', score: 50, history: [] });
 
       // Verify no buttons, links, or form controls exist
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      expect(container.querySelector('input')).toBeNull();
+      expect(document.querySelector('input')).toBeNull();
     });
 
     it('no interactive elements exist in full state', () => {
-      const { container } = renderProfile({ name: 'Full No Interaction', score: 88, history: HISTORY_EVENTS });
+      renderProfile({ name: 'Full No Interaction', score: 88, history: HISTORY_EVENTS });
 
       // Verify no buttons, links, or form controls exist
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      expect(container.querySelector('input')).toBeNull();
+      expect(document.querySelector('input')).toBeNull();
     });
 
     it('legend items are not interactive – no click handlers', () => {
