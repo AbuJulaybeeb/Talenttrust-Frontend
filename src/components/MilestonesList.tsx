@@ -4,7 +4,7 @@ import Card from './Card';
 import { usePreferences } from '@/lib/preferences';
 import { isDueSoon } from '@/lib/dueSoon';
 import { findCurrencyMismatches, normalizeCurrencyCode } from '@/lib/currencyMismatch';
-import { milestoneStatusTally } from '@/lib/milestoneStatusTally';
+import { milestoneStatusTally, STATUS_ORDER } from '@/lib/milestoneStatusTally';
 
 export type Milestone = {
   id: string;
@@ -68,14 +68,102 @@ const MilestonesList = ({ milestones, contractCurrency }: MilestonesListProps) =
   };
 
   return (
-    <section aria-labelledby="milestones-title">
-      <Card
-        header={
-          <div className="flex items-center justify-between gap-4">
-            <h2 id="milestones-title" className="text-xl font-semibold text-slate-900">
-              Milestones
-            </h2>
-            <span className="text-sm text-slate-500">{milestones.length} total</span>
+    <section aria-labelledby="milestones-title" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="milestones-title" className="text-xl font-semibold text-slate-900">
+          Milestones
+        </h2>
+        <span id="milestones-count" className="text-sm text-slate-500">{milestones.length} total</span>
+      </div>
+
+      {tallies.length > 0 && (
+        <div
+          role="list"
+          aria-label="Milestone status summary"
+          className="mt-4 flex flex-wrap gap-2"
+        >
+          {tallies.map(({ status, count }) => (
+            <span
+              key={status}
+              role="listitem"
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusColorMap[status]}`}
+            >
+              <span aria-hidden="true">{statusIconMap[status]}</span>
+              {status}
+              <span className="ml-0.5 rounded-full bg-white/40 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                {count}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Status legend: explains every possible status indicator shown in the list. */}
+      <div
+        id="milestones-status-legend"
+        className="mt-3"
+        role="list"
+        aria-label="Status legend"
+      >
+        <span className="text-xs font-medium text-slate-500">
+          Status key:
+        </span>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {STATUS_ORDER.map((status) => (
+            <span
+              key={status}
+              role="listitem"
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColorMap[status]}`}
+            >
+              <span aria-hidden="true">{statusIconMap[status]}</span>
+              {status}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {normalizedContractCurrency && mismatchedMilestones.length > 0 ? (
+        <div
+          role="alert"
+          className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+        >
+          <p className="font-semibold">
+            {mismatchedMilestones.length}{' '}
+            {mismatchedMilestones.length === 1 ? 'milestone uses' : 'milestones use'}{' '}
+            {mismatchCurrencies.join(', ')} instead of {normalizedContractCurrency}.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {mismatchedMilestones.map((milestone) => (
+              <li key={milestone.id}>
+                {milestone.title}: {formatAmount(milestone.payout, milestone.currency)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {showBanner && (
+        <div
+          role="status"
+          className="mt-6 flex items-start gap-3 rounded-3xl border border-amber-200 bg-amber-50/50 p-4 text-amber-900 shadow-sm backdrop-blur-sm dark:border-amber-500/20 dark:bg-amber-500/5 dark:text-amber-200"
+        >
+          <div className="flex-1">
+            <p className="font-semibold text-sm">
+              {dueSoonMilestones.length} {dueSoonMilestones.length === 1 ? 'milestone is' : 'milestones are'} due within {REMINDER_WINDOW_DAYS} days
+            </p>
+            <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-amber-800 dark:text-amber-300">
+              {dueSoonMilestones.map((m, idx) => (
+                <li key={m.id} className="flex items-center gap-1.5">
+                  {idx > 0 && <span className="text-amber-400 select-none" aria-hidden="true">•</span>}
+                  <a
+                    href={`#milestone-${m.id}`}
+                    className="font-medium underline hover:text-amber-950 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 rounded"
+                  >
+                    {m.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         }
       >
