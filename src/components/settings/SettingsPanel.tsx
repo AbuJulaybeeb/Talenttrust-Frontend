@@ -6,12 +6,17 @@ import { usePreferences, Theme, AmountFormat, ToastDensity } from '@/lib/prefere
 const FOCUSABLE_SELECTORS =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// Module-level constants avoid recreating these arrays on every render.
+const THEME_OPTIONS: Theme[] = ['light', 'dark', 'system'];
+const CURRENCY_OPTIONS: AmountFormat[] = ['usd', 'ngn', 'compact'];
+const DENSITY_OPTIONS: ToastDensity[] = ['relaxed', 'compact'];
+
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
+export const SettingsPanel = React.memo(function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference } = usePreferences();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -96,7 +101,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <div>
                 <label id="theme-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Theme</label>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="theme-label" aria-label="Theme">
-                  {(['light', 'dark', 'system'] as Theme[]).map((t) => (
+                  {THEME_OPTIONS.map((t) => (
                     <button
                       key={t}
                       onClick={() => updatePreference('theme', t)}
@@ -117,7 +122,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <div>
                 <label id="currency-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Currency Display</label>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="currency-label" aria-label="Currency Display">
-                  {(['usd', 'ngn', 'compact'] as AmountFormat[]).map((f) => (
+                  {CURRENCY_OPTIONS.map((f) => (
                     <button
                       key={f}
                       onClick={() => updatePreference('amountFormat', f)}
@@ -145,7 +150,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <div>
                 <label id="density-label" className="block text-sm font-medium mb-2 text-[var(--foreground)]">Toast Density</label>
                 <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby="density-label" aria-label="Toast Density">
-                  {(['relaxed', 'compact'] as ToastDensity[]).map((d) => (
+                  {DENSITY_OPTIONS.map((d) => (
                     <button
                       key={d}
                       onClick={() => updatePreference('toastDensity', d)}
@@ -199,4 +204,4 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       </div>
     </div>
   );
-}
+});
